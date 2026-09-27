@@ -1,0 +1,110 @@
+openapi: 3.0.3
+info:
+  title: doadores-service
+  version: 1.0.0
+  description: Cadastro e perfil dos doadores; verificação de credenciais. Uso interno (atrás dos BFFs).
+servers:
+  - url: http://doadores-service:3001
+paths:
+  /health:
+    get:
+      summary: Liveness — processo vivo
+      responses: { '200': { $ref: '#/components/responses/Status' } }
+  /ready:
+    get:
+      summary: Readiness — banco respondendo
+      responses:
+        '200': { $ref: '#/components/responses/Status' }
+        '503': { $ref: '#/components/responses/Status' }
+  /doadores:
+    get:
+      summary: Lista doadores
+      parameters:
+        - { name: cidade, in: query, schema: { type: string } }
+        - { name: uf, in: query, schema: { type: string, minLength: 2, maxLength: 2 } }
+      responses:
+        '200':
+          description: OK
+          content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Doador' } } } }
+    post:
+      summary: Cadastra doador
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/NovoDoador' } } }
+      responses:
+        '201': { description: Criado, content: { application/json: { schema: { $ref: '#/components/schemas/Doador' } } } }
+        '400': { $ref: '#/components/responses/Erro' }
+        '409': { $ref: '#/components/responses/Erro' }
+  /doadores/{id}:
+    parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+    get:
+      summary: Obtém doador
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Doador' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+    patch:
+      summary: Atualiza perfil
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AtualizaDoador' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Doador' } } } }
+        '404': { $ref: '#/components/responses/Erro' }
+  /auth/verificar:
+    post:
+      summary: Verifica e-mail e senha (usado no fluxo de login)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, senha]
+              properties: { email: { type: string, format: email }, senha: { type: string } }
+      responses:
+        '200':
+          description: Credenciais válidas
+          content:
+            application/json:
+              schema: { type: object, properties: { id: { type: string, format: uuid }, nome: { type: string }, email: { type: string } } }
+        '401': { $ref: '#/components/responses/Erro' }
+components:
+  responses:
+    Status:
+      description: Estado do componente
+      content: { application/json: { schema: { type: object, properties: { status: { type: string }, checks: { type: object } } } } }
+    Erro:
+      description: Erro
+      content: { application/json: { schema: { type: object, properties: { erro: { type: string } } } } }
+  schemas:
+    TipoSanguineo: { type: string, enum: [A+, A-, B+, B-, AB+, AB-, O+, O-], nullable: true }
+    NovoDoador:
+      type: object
+      required: [nome, email, senha, cidade, uf]
+      properties:
+        nome: { type: string, minLength: 2 }
+        email: { type: string, format: email }
+        senha: { type: string, minLength: 8 }
+        tipoSanguineo: { $ref: '#/components/schemas/TipoSanguineo' }
+        cidade: { type: string }
+        uf: { type: string, minLength: 2, maxLength: 2 }
+        dataUltimaDoacao: { type: string, format: date, nullable: true }
+    AtualizaDoador:
+      type: object
+      properties:
+        nome: { type: string, minLength: 2 }
+        tipoSanguineo: { $ref: '#/components/schemas/TipoSanguineo' }
+        cidade: { type: string }
+        uf: { type: string, minLength: 2, maxLength: 2 }
+        dataUltimaDoacao: { type: string, format: date, nullable: true }
+    Doador:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string }
+        tipoSanguineo: { $ref: '#/components/schemas/TipoSanguineo' }
+        cidade: { type: string }
+        uf: { type: string }
+        dataUltimaDoacao: { type: string, format: date, nullable: true }
+        criadoEm: { type: string, format: date-time }

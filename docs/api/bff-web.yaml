@@ -1,0 +1,59 @@
+openapi: 3.0.3
+info:
+  title: bff-web
+  version: 1.0.0
+  description: |
+    Backend for Frontend da aplicação web (painéis e administração de comunidades).
+    Exposto pelo gateway sob `/api/web`. Também atende a verificação de credenciais usada
+    pelo gateway no login (`/auth/verificar-credenciais`, não exposto externamente).
+servers:
+  - url: http://bff-web:4002
+paths:
+  /health: { get: { summary: Liveness, responses: { '200': { description: OK } } } }
+  /ready: { get: { summary: Readiness, responses: { '200': { description: OK } } } }
+  /auth/verificar-credenciais:
+    post:
+      summary: (Interno — somente o gateway) verifica credenciais no doadores-service
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, senha], properties: { email: { type: string }, senha: { type: string } } } } } }
+      responses: { '200': { description: 'Válidas: { id, nome, email }' }, '401': { description: Inválidas } }
+  /cadastro:
+    post: { summary: Cadastro de doador (público), responses: { '201': { description: Criado }, '409': { description: E-mail em uso } } }
+  /painel:
+    get:
+      summary: Painel do usuário
+      description: Perfil + comunidades (com papel) + mobilizações futuras dessas comunidades + mobilizações em que tem interesse.
+      responses: { '200': { description: OK } }
+  /comunidades:
+    get:
+      summary: Lista comunidades
+      parameters:
+        - { name: cidade, in: query, schema: { type: string } }
+        - { name: uf, in: query, schema: { type: string } }
+      responses: { '200': { description: OK } }
+    post: { summary: Cria comunidade (usuário vira admin), responses: { '201': { description: Criada } } }
+  /comunidades/{id}:
+    get:
+      summary: Detalhe agregado
+      description: Comunidade + membros (com nome do doador) + mobilizações da comunidade.
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '200': { description: OK }, '404': { description: Não encontrada } }
+  /comunidades/{id}/membros:
+    post: { summary: Usuário entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: OK }, '409': { description: Já é membro } } }
+  /comunidades/{id}/mobilizacoes:
+    post:
+      summary: Cria mobilização da comunidade
+      description: |
+        Valida no comunidades-service que o usuário é **admin** da comunidade (403 caso contrário)
+        e cria no mobilizacoes-service, que publica `mobilizacao.criada`.
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '201': { description: Criada }, '403': { description: Não é admin }, '404': { description: Comunidade não encontrada } }
+  /mobilizacoes/{id}:
+    get:
+      summary: Detalhe da mobilização + hemocentro (informacoes) + comunidade
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '200': { description: OK }, '404': { description: Não encontrada } }
+  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK } } } }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }

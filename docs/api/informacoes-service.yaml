@@ -1,0 +1,80 @@
+openapi: 3.0.3
+info:
+  title: informacoes-service
+  version: 1.0.0
+  description: |
+    Conteúdos educativos, perguntas frequentes e hemocentros (caráter orientativo).
+    Somente leitura nesta versão; os dados vêm do seed das migrations.
+servers:
+  - url: http://informacoes-service:3004
+paths:
+  /health:
+    get: { summary: Liveness, responses: { '200': { description: OK } } }
+  /ready:
+    get: { summary: Readiness (banco), responses: { '200': { description: OK }, '503': { description: Indisponível } } }
+  /conteudos:
+    get:
+      summary: Lista conteúdos (resumo)
+      parameters: [ { name: categoria, in: query, schema: { $ref: '#/components/schemas/Categoria' } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ConteudoResumo' } } } } }
+  /conteudos/{slug}:
+    get:
+      summary: Obtém conteúdo completo
+      parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Conteudo' } } } }
+        '404': { description: Não encontrado }
+  /dicas/aleatoria:
+    get:
+      summary: Um conteúdo aleatório da categoria `dica`
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Conteudo' } } } }
+  /faq:
+    get:
+      summary: Perguntas frequentes
+      parameters: [ { name: categoria, in: query, schema: { $ref: '#/components/schemas/Categoria' } } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: object, properties: { id: { type: string }, pergunta: { type: string }, resposta: { type: string }, categoria: { type: string } } }
+  /hemocentros:
+    get:
+      summary: Lista hemocentros
+      parameters:
+        - { name: cidade, in: query, schema: { type: string } }
+        - { name: uf, in: query, schema: { type: string } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Hemocentro' } } } } }
+  /hemocentros/{id}:
+    get:
+      summary: Obtém hemocentro
+      parameters: [ { name: id, in: path, required: true, schema: { type: string, format: uuid } } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Hemocentro' } } } }
+        '404': { description: Não encontrado }
+components:
+  schemas:
+    Categoria: { type: string, enum: [requisitos, preparo, documentos, mitos, dica] }
+    ConteudoResumo:
+      type: object
+      properties: { slug: { type: string }, titulo: { type: string }, categoria: { $ref: '#/components/schemas/Categoria' }, resumo: { type: string } }
+    Conteudo:
+      allOf:
+        - $ref: '#/components/schemas/ConteudoResumo'
+        - type: object
+          properties: { corpo: { type: string }, atualizadoEm: { type: string, format: date-time } }
+    Hemocentro:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        cidade: { type: string }
+        uf: { type: string }
+        endereco: { type: string }
+        telefone: { type: string, nullable: true }
+        horarios: { type: string, nullable: true }

@@ -1,0 +1,54 @@
+openapi: 3.0.3
+info:
+  title: 4Life API Gateway
+  version: 1.0.0
+  description: |
+    Ponto único de entrada externo. Roteia por prefixo para os BFFs:
+    - `/api/mobile/**` → bff-mobile (prefixo removido)
+    - `/api/web/**`    → bff-web (prefixo removido)
+
+    **Autenticação:** `Authorization: Bearer <jwt>` obrigatório, exceto nas rotas públicas:
+    `POST /auth/login`, `POST /api/{mobile,web}/cadastro`, `GET /api/{mobile,web}/info/**`,
+    `GET /api/mobile/diagnostico/whoami`, `GET /health`, `GET /ready`.
+
+    O gateway descarta cabeçalhos `x-user-*` recebidos e injeta `x-user-id` e `x-user-nome`
+    a partir do token validado. Rotas completas de cada BFF: ver `bff-mobile.yaml` e `bff-web.yaml`.
+servers:
+  - url: http://localhost:8080
+    description: docker compose
+  - url: http://4life.localhost
+    description: Kubernetes (Ingress)
+security:
+  - bearer: []
+paths:
+  /health:
+    get: { security: [], summary: Liveness, responses: { '200': { description: OK } } }
+  /ready:
+    get: { security: [], summary: Readiness, responses: { '200': { description: OK } } }
+  /auth/login:
+    post:
+      security: []
+      summary: Troca e-mail/senha por um JWT
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [email, senha], properties: { email: { type: string }, senha: { type: string } } } } }
+      responses:
+        '200':
+          description: Autenticado
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, tipo: { type: string, example: Bearer }, expiraEm: { type: integer, description: segundos } } }
+        '401': { description: Credenciais inválidas }
+  /api/mobile/{caminho}:
+    parameters: [ { name: caminho, in: path, required: true, schema: { type: string } } ]
+    get: { summary: Proxy → bff-mobile, responses: { '2XX': { description: Resposta do BFF }, '401': { description: Token ausente/inválido }, '502': { description: BFF indisponível } } }
+    post: { summary: Proxy → bff-mobile, responses: { '2XX': { description: Resposta do BFF }, '401': { description: Token ausente/inválido } } }
+    patch: { summary: Proxy → bff-mobile, responses: { '2XX': { description: Resposta do BFF } } }
+    delete: { summary: Proxy → bff-mobile, responses: { '2XX': { description: Resposta do BFF } } }
+  /api/web/{caminho}:
+    parameters: [ { name: caminho, in: path, required: true, schema: { type: string } } ]
+    get: { summary: Proxy → bff-web, responses: { '2XX': { description: Resposta do BFF }, '401': { description: Token ausente/inválido } } }
+    post: { summary: Proxy → bff-web, responses: { '2XX': { description: Resposta do BFF } } }
+components:
+  securitySchemes:
+    bearer: { type: http, scheme: bearer, bearerFormat: JWT }

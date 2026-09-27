@@ -1,0 +1,102 @@
+openapi: 3.0.3
+info:
+  title: mobilizacoes-service
+  version: 1.0.0
+  description: |
+    Mobilizações (eventos de doação organizados por comunidades) e interesses.
+    Publica `mobilizacao.criada` e `mobilizacao.interesse-registrado` na exchange `4life.events`.
+servers:
+  - url: http://mobilizacoes-service:3003
+paths:
+  /health:
+    get: { summary: Liveness, responses: { '200': { description: OK } } }
+  /ready:
+    get: { summary: Readiness (banco), responses: { '200': { description: OK }, '503': { description: Indisponível } } }
+  /whoami:
+    get:
+      summary: Identifica a réplica (pod) que atendeu — usado na demonstração de escala
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { servico: { type: string }, pod: { type: string }, iniciadoEm: { type: string, format: date-time } } }
+  /mobilizacoes:
+    get:
+      summary: Lista mobilizações
+      parameters:
+        - { name: comunidadeId, in: query, schema: { type: string, format: uuid } }
+        - { name: cidade, in: query, schema: { type: string } }
+        - { name: interessado, in: query, description: Mobilizações em que o doador registrou interesse, schema: { type: string, format: uuid } }
+        - { name: futuras, in: query, description: Apenas com dataHora >= agora, schema: { type: boolean, default: false } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Mobilizacao' } } } } }
+    post:
+      summary: Cria mobilização e publica `mobilizacao.criada`
+      parameters: [ { name: x-user-id, in: header, required: true, schema: { type: string, format: uuid } } ]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comunidadeId, titulo, dataHora, cidade, uf]
+              properties:
+                comunidadeId: { type: string, format: uuid }
+                titulo: { type: string, minLength: 3 }
+                descricao: { type: string }
+                dataHora: { type: string, format: date-time }
+                cidade: { type: string }
+                uf: { type: string, minLength: 2, maxLength: 2 }
+                hemocentroId: { type: string, format: uuid, nullable: true }
+                local: { type: string }
+                vagas: { type: integer, minimum: 1, nullable: true }
+      responses:
+        '201': { description: Criada, content: { application/json: { schema: { $ref: '#/components/schemas/Mobilizacao' } } } }
+        '400': { description: Dados inválidos }
+  /mobilizacoes/{id}:
+    parameters: [ { $ref: '#/components/parameters/Id' } ]
+    get:
+      summary: Obtém mobilização
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Mobilizacao' } } } }
+        '404': { description: Não encontrada }
+  /mobilizacoes/{id}/interesses:
+    parameters: [ { $ref: '#/components/parameters/Id' } ]
+    post:
+      summary: Registra interesse do doador
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [doadorId], properties: { doadorId: { type: string, format: uuid } } } } }
+      responses:
+        '201': { description: Registrado }
+        '404': { description: Mobilização não encontrada }
+        '409': { description: Interesse já registrado }
+        '422': { description: Vagas esgotadas }
+  /mobilizacoes/{id}/interesses/{doadorId}:
+    parameters:
+      - { $ref: '#/components/parameters/Id' }
+      - { name: doadorId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      summary: Cancela interesse
+      responses: { '204': { description: Cancelado }, '404': { description: Não encontrado } }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    Mobilizacao:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        comunidadeId: { type: string, format: uuid }
+        titulo: { type: string }
+        descricao: { type: string, nullable: true }
+        dataHora: { type: string, format: date-time }
+        cidade: { type: string }
+        uf: { type: string }
+        hemocentroId: { type: string, format: uuid, nullable: true }
+        local: { type: string, nullable: true }
+        vagas: { type: integer, nullable: true }
+        totalInteressados: { type: integer }
+        criadorId: { type: string, format: uuid }
+        criadoEm: { type: string, format: date-time }

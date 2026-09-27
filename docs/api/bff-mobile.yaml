@@ -1,0 +1,88 @@
+openapi: 3.0.3
+info:
+  title: bff-mobile
+  version: 1.0.0
+  description: |
+    Backend for Frontend do app mobile. Exposto externamente pelo gateway sob `/api/mobile`
+    (ex.: `GET /api/mobile/inicio` → `GET /inicio`). O usuário autenticado chega no cabeçalho
+    `x-user-id`, injetado pelo gateway. Respostas enxutas, pensadas para telas pequenas.
+servers:
+  - url: http://bff-mobile:4001
+paths:
+  /health: { get: { summary: Liveness, responses: { '200': { description: OK } } } }
+  /ready: { get: { summary: Readiness, responses: { '200': { description: OK } } } }
+  /cadastro:
+    post:
+      summary: Cadastro de doador (público) → doadores-service
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/NovoDoador' } } } }
+      responses: { '201': { description: Criado }, '409': { description: E-mail em uso } }
+  /inicio:
+    get:
+      summary: Tela inicial agregada
+      description: |
+        Agrega em paralelo: próximas mobilizações da cidade do usuário (mobilizacoes),
+        comunidades do usuário (comunidades) e uma dica (informacoes). Falha de uma fonte
+        secundária resulta em campo `null` e item em `avisos`.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  usuario: { type: object, properties: { id: { type: string }, nome: { type: string }, cidade: { type: string } } }
+                  proximasMobilizacoes: { type: array, nullable: true, items: { $ref: '#/components/schemas/MobilizacaoCard' } }
+                  minhasComunidades: { type: array, nullable: true, items: { type: object, properties: { id: { type: string }, nome: { type: string } } } }
+                  dica: { type: object, nullable: true, properties: { titulo: { type: string }, resumo: { type: string } } }
+                  avisos: { type: array, items: { type: string } }
+  /perfil:
+    get: { summary: Perfil do usuário autenticado, responses: { '200': { description: OK } } }
+    patch: { summary: Atualiza perfil, responses: { '200': { description: OK } } }
+  /mobilizacoes:
+    get:
+      summary: Próximas mobilizações (cards)
+      parameters: [ { name: cidade, in: query, schema: { type: string } } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MobilizacaoCard' } } } } } }
+  /mobilizacoes/{id}:
+    get: { summary: Detalhe da mobilização, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '200': { description: OK }, '404': { description: Não encontrada } } }
+  /mobilizacoes/{id}/interesse:
+    parameters: [ { $ref: '#/components/parameters/Id' } ]
+    post: { summary: Registra interesse do usuário, responses: { '201': { description: OK }, '409': { description: Já registrado }, '422': { description: Lotada } } }
+    delete: { summary: Cancela interesse, responses: { '204': { description: OK } } }
+  /comunidades:
+    get:
+      summary: Busca comunidades
+      parameters: [ { name: cidade, in: query, schema: { type: string } } ]
+      responses: { '200': { description: OK } }
+  /comunidades/{id}/entrar:
+    post: { summary: Entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: OK }, '409': { description: Já é membro } } }
+  /comunidades/{id}/sair:
+    delete: { summary: Sai da comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: OK } } }
+  /info/faq: { get: { summary: FAQ (público), responses: { '200': { description: OK } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK } } } }
+  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK } } } }
+  /info/conteudos/{slug}: { get: { summary: Conteúdo (público), parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: OK } } } }
+  /diagnostico/whoami:
+    get:
+      summary: Cadeia de réplicas que atendeu a requisição (demonstração de escala)
+      description: Chama `mobilizacoes-service /whoami` **sem keep-alive**, para que cada requisição seja balanceada pelo Service.
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: object, properties: { bff: { type: string }, mobilizacoes: { type: string } } }
+components:
+  parameters:
+    Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    MobilizacaoCard:
+      type: object
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        dataHora: { type: string, format: date-time }
+        cidade: { type: string }
+        totalInteressados: { type: integer }
+        vagasRestantes: { type: integer, nullable: true }
