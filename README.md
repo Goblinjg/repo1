@@ -118,6 +118,132 @@ De forma conceitual, o 4Life conecta usuários, comunidades, mobilizações e in
 
 --- 
 
+## Arquitetura
+
+A arquitetura do 4Life é composta por:
+- 4 microsserviços de domínio, cada um com seu próprio PostgreSQL;
+- 2 BFFs (mobile e web);
+- 1 API Gateway com autenticação JWT;
+- RabbitMQ para eventos.
+
+| Documento | Conteúdo |
+|---|---|
+| [docs/arquitetura.md](docs/arquitetura.md) | Visão geral, decomposição, gateway, BFFs, bancos e eventos |
+| [docs/api/](docs/api/) | Contratos OpenAPI de cada serviço, BFF e gateway |
+| [docs/adr/](docs/adr/) | Decisões arquiteturais (stack, banco por serviço, gateway+BFF, mensageria) |
+| [docs/k8s/decisoes.md](docs/k8s/decisoes.md) | Multi-stage, redes, volumes, réplicas, probes, ConfigMaps/Secrets |
+| [docs/k8s/ingress-vs-gateway.md](docs/k8s/ingress-vs-gateway.md) | O que fica no Ingress e o que fica no gateway |
+| [docs/video-roteiro-parte3.md](docs/video-roteiro-parte3.md) | Roteiro do vídeo da Parte 3 |
+| [docs/perguntas-arguicao-parte3.md](docs/perguntas-arguicao-parte3.md) | Perguntas prováveis da arguição |
+
+### Estrutura do repositório
+
+```text
+services/<nome>-service/   4 serviços de domínio (src/, migrations/, Dockerfile)
+bff/bff-{mobile,web}/      BFFs
+gateway/                   API Gateway
+docker-compose.yml         ambiente completo com Docker
+k8s/                       manifests Kubernetes por componente (Kustomize)
+scripts/                   subida, testes e demonstrações
+docs/                      arquitetura, contratos, decisões e material da apresentação
+```
+
+---
+
+## Como executar
+
+### Pré-requisitos
+
+| Ferramenta | Versão testada | Para quê |
+|---|---|---|
+| Docker Engine + Compose v2 | 29.7 / 5.5 | compose e build das imagens |
+| `curl`, `jq`, `openssl` | — | scripts de teste e geração do `.env` |
+| [kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation) | 0.33 | cluster Kubernetes local (só para K8s) |
+| [kubectl](https://kubernetes.io/docs/tasks/tools/) | 1.37 | só para K8s |
+
+Os testes foram feitos em Linux x86_64. Os scripts são Bash.
+
+### 1. Configuração (obrigatória, uma vez)
+
+```bash
+git clone https://github.com/Goblinjg/repo1.git 4life && cd 4life
+./scripts/gerar-env.sh      # cria o .env com senhas e JWT_SECRET aleatórios
+```
+
+- O `.env` **não** é versionado.
+- O [`.env.example`](.env.example) mostra as variáveis.
+- Nenhuma credencial fica no código: tudo vem do `.env`, tanto no compose quanto
+  no K8s (via Secrets).
+
+### 2a. Com Docker Compose
+
+```bash
+docker compose up -d --build     # builda as 7 imagens e sobe os 12 containers
+docker compose ps                # aguarde todos ficarem (healthy), ~30s
+./scripts/smoke-test.sh          # teste ponta a ponta pelo gateway (http://localhost:8080)
+```
+
+Demonstrações:
+
+```bash
+./scripts/teste-isolamento.sh    # um serviço NÃO alcança o banco de outro (redes isoladas)
+./scripts/teste-persistencia.sh  # docker compose down/up mantém os dados (volumes nomeados)
+./scripts/medir-imagens.sh       # tamanho single-stage × multi-stage
+```
+
+- Painel do RabbitMQ: <http://127.0.0.1:15672>. Usuário e senha estão no `.env`.
+- Parar: `docker compose down`. Apagar também os dados: `docker compose down -v`.
+
+### 2b. Com Kubernetes (kind)
+
+```bash
+./scripts/k8s-up.sh
+```
+
+O `k8s-up.sh` faz tudo, e pode ser rodado de novo sem problema:
+1. cria o cluster kind (3 nós);
+2. sobe o cloud-provider-kind (Ingress);
+3. instala o metrics-server;
+4. builda as imagens e as carrega nos nós;
+5. cria os Secrets a partir do `.env` (`scripts/k8s-create-secrets.sh`);
+6. roda `kubectl apply -k k8s/`;
+7. espera todos os pods ficarem Ready. Leva cerca de 2 minutos na primeira vez.
+
+No final, ele imprime o IP do Ingress. Para usar:
+
+```bash
+IP=$(kubectl -n 4life get ingress 4life -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+curl --resolve 4life.test:80:$IP http://4life.test/health
+INGRESS_IP=$IP BASE_URL=http://4life.test ./scripts/smoke-test.sh
+```
+
+Para abrir no navegador, adicione o IP ao `/etc/hosts`:
+`echo "$IP 4life.test" | sudo tee -a /etc/hosts`.
+
+Demonstrações:
+
+```bash
+kubectl -n 4life get pods,svc,ingress,pvc,hpa   # visão geral dos recursos
+./scripts/demo-escala.sh              # kubectl scale 1 → 3 e distribuição das requisições por pod
+./scripts/k8s-demo-readiness.sh       # banco fora: pods saem do Service (readiness) sem reiniciar (liveness)
+./scripts/k8s-teste-persistencia.sh   # mata o pod do banco; o dado sobrevive no PVC
+./scripts/k8s-teste-isolamento.sh     # NetworkPolicies: serviço não alcança banco alheio
+```
+
+Remover tudo, inclusive os PVCs: `./scripts/k8s-down.sh`.
+
+### Problemas comuns
+
+| Sintoma | Solução |
+|---|---|
+| `DOADORES_DB_PASSWORD ... defina no .env` | Rode `./scripts/gerar-env.sh` |
+| Porta 8080 ocupada | Defina `GATEWAY_PORT=8081` no `.env` |
+| Ingress responde `upstream connect error` | Sobrou um LB de um cluster antigo. Rode `./scripts/k8s-down.sh && ./scripts/k8s-up.sh` |
+| macOS/Windows: IP do Ingress não responde | A rede do kind não é roteável a partir do host nesses sistemas (não testado). Use `kubectl -n 4life port-forward svc/gateway 8080:8080` |
+| Mudou o código e quer ver no K8s | Rode `./scripts/k8s-up.sh` de novo: ele rebuilda, recarrega e reinicia os Deployments |
+
+---
+
 ## Repositório
 
 O projeto **4Life**, desenvolvido pela startup **Nibble** no contexto da disciplina de **Sistemas Distribuídos**, possui seu código-fonte e demais artefatos de desenvolvimento disponibilizados neste repositório público.
