@@ -1,10 +1,18 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { config } from './config.js';
-import { bancoRespondendo, estado, migrarComRetentativas, pool, pronto } from './db.js';
+import { bancoRespondendo, estado, migrarComRetentativas, pool } from './db.js';
+
+interface OpcoesApp {
+  // Entram no /ready e DEFINEM a prontidão (além do banco). Ex.: broker para quem publica eventos.
+  obrigatorios?: () => Record<string, boolean>;
+  // Entram no /ready só como informação, sem afetar a prontidão. Ex.: broker para quem só consome.
+  informativos?: () => Record<string, string>;
+}
 
 // Monta o servidor com health/readiness e tratamento de erros comuns do PostgreSQL.
-// `informativos` entram na resposta do /ready, mas não afetam a prontidão (ex.: broker).
-export function criarApp(informativos: () => Record<string, string> = () => ({})): FastifyInstance {
+export function criarApp({ obrigatorios = () => ({}), informativos = () => ({}) }: OpcoesApp = {}): FastifyInstance {
+  const pronto = () => estado.migrado && estado.bancoOk && Object.values(obrigatorios()).every(Boolean);
+
   const app = Fastify({ logger: { level: config.logLevel } });
 
   // liveness: só indica que o processo está vivo; não depende de nada externo
@@ -12,13 +20,18 @@ export function criarApp(informativos: () => Record<string, string> = () => ({})
 
   // readiness: só recebe tráfego quando o banco responde e as migrations foram aplicadas
   app.get('/ready', { logLevel: 'warn' }, async (_req, reply) => {
-    const banco = await bancoRespondendo();
-    estado.bancoOk = banco;
-    const ok = banco && estado.migrado;
+    estado.bancoOk = await bancoRespondendo();
+    const ok = pronto();
+    const deps = Object.fromEntries(Object.entries(obrigatorios()).map(([k, v]) => [k, v ? 'ok' : 'falha']));
     reply.code(ok ? 200 : 503);
     return {
       status: ok ? 'ready' : 'not-ready',
-      checks: { banco: banco ? 'ok' : 'falha', migrations: estado.migrado ? 'ok' : 'pendente', ...informativos() },
+      checks: {
+        banco: estado.bancoOk ? 'ok' : 'falha',
+        migrations: estado.migrado ? 'ok' : 'pendente',
+        ...deps,
+        ...informativos(),
+      },
     };
   });
 

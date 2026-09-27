@@ -157,7 +157,19 @@ não tem `depends_on`.
 - `/health` **não depende de nada externo**. Se dependesse do banco, uma queda
   do PostgreSQL faria o kubelet reiniciar todos os pods em loop, sem resolver
   nada.
-- `/ready` checa o **banco** e as **migrations**.
+- `/ready` checa o **banco** e as **migrations**. No **mobilizacoes-service**,
+  que publica eventos, checa também a **conexão com o broker**. Sem ela, uma
+  mobilização criada não chegaria às comunidades. Os outros serviços continuam
+  prontos sem broker; o consumidor reconecta sozinho.
+
+  **Achado no teste do zero:** no cluster recém-criado, o mobilizacoes ficou Ready
+  (banco OK) **antes** de conectar no RabbitMQ, e o primeiro evento foi para a
+  tabela `outbox` sem ser entregue, porque o relay só entra na Parte 4. Com o
+  broker na readiness, o pod só recebe tráfego quando consegue publicar.
+
+  Pelo mesmo motivo, **publicador e consumidor declaram a fila e o binding**
+  (`comunidades.mobilizacao-criada`), que é uma operação idempotente. Numa
+  exchange topic, uma mensagem publicada antes de existir a fila seria descartada.
 - BFFs e gateway não têm estado, então o `/ready` deles responde assim que o
   processo sobe. Checar dependências ali causaria falhas em cascata: um serviço
   fora do ar tiraria do balanceamento o BFF inteiro, inclusive as telas que não

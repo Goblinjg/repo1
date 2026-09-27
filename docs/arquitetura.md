@@ -96,6 +96,10 @@ Envelope:
 ```
 
 - Consumo com *ack* manual e **idempotente** (tabela `eventos_processados`).
+- A fila e o binding são declarados pelo consumidor **e** pelo publicador
+  (idempotente), para que nenhum evento publicado antes de o consumidor subir
+  seja descartado.
+- O `/ready` do mobilizacoes-service inclui a conexão com o broker.
 - Na Parte 3 a publicação é feita logo após o commit da transação. Na Parte 4
   ela passa a ser feita via **outbox + relay** (tabela já criada).
 

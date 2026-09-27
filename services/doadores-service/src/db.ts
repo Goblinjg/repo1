@@ -9,7 +9,6 @@ pool.on('error', () => {}); // conexões ociosas perdidas são recriadas sob dem
 
 // migrado: migrations aplicadas; bancoOk: resultado da última checagem periódica do banco.
 export const estado = { migrado: false, bancoOk: false };
-export const pronto = () => estado.migrado && estado.bancoOk;
 
 // Chave arbitrária do advisory lock: garante que só uma réplica aplica migrations por vez.
 const LOCK_MIGRATIONS = 4104;

@@ -5,6 +5,11 @@ import { config } from './config.js';
 
 export const EXCHANGE = '4life.events';
 
+// Filas duráveis que precisam existir ANTES da primeira publicação. Numa exchange topic,
+// mensagem sem fila ligada é descartada; se o consumidor ainda não subiu, o evento se perderia.
+// Declarar é idempotente, então publicador e consumidor declaram a mesma topologia.
+const TOPOLOGIA = [{ fila: 'comunidades.mobilizacao-criada', chave: 'mobilizacao.criada' }];
+
 export interface Evento<T = unknown> {
   id: string;
   tipo: string;
@@ -30,6 +35,10 @@ export async function conectarBroker(log: FastifyBaseLogger): Promise<void> {
       });
       const novo = await conexao.createConfirmChannel();
       await novo.assertExchange(EXCHANGE, 'topic', { durable: true });
+      for (const { fila, chave } of TOPOLOGIA) {
+        await novo.assertQueue(fila, { durable: true });
+        await novo.bindQueue(fila, EXCHANGE, chave);
+      }
       canal = novo;
       log.info('conectado ao broker');
       return;

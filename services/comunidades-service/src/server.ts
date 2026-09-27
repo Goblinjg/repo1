@@ -3,7 +3,8 @@ import { brokerConectado, consumir } from './broker.js';
 import { aoCriarMobilizacao } from './eventos.js';
 import { rotas } from './rotas.js';
 
-const app = criarApp(() => ({ broker: brokerConectado() ? 'ok' : 'desconectado' }));
+// Consumidor: sem broker, a API de comunidades continua útil; o consumo é retomado ao reconectar.
+const app = criarApp({ informativos: () => ({ broker: brokerConectado() ? 'ok' : 'desconectado' }) });
 await app.register(rotas);
 await iniciar(app);
 void consumir(app.log, [
