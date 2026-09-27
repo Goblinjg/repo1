@@ -1,0 +1,7 @@
+# Versão INGÊNUA, usada só para medir o ganho do multi-stage (scripts/medir-imagens.sh).
+# Imagem base completa (Debian), devDependencies, código-fonte TS e cache do npm na imagem final.
+FROM node:22
+WORKDIR /app
+COPY . .
+RUN npm ci && npm run build
+CMD ["node", "dist/server.js"]

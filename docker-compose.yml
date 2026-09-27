@@ -1,0 +1,210 @@
+# 4Life — ambiente completo: `docker compose up -d --build`
+#
+# Redes (isolamento por camada):
+#   edge              gateway <-> BFFs                    (única rede com porta publicada)
+#   app               BFFs <-> serviços de domínio         (internal: sem saída para a internet)
+#   bus               serviços que usam mensageria <-> RabbitMQ
+#   data-<servico>    cada serviço <-> SOMENTE o seu banco
+#   ops               painel de administração do RabbitMQ (apenas 127.0.0.1)
+#
+# Credenciais vêm do arquivo .env (copie de .env.example ou rode scripts/gerar-env.sh).
+
+name: 4life
+
+x-servico: &servico
+  restart: unless-stopped
+  environment: &env-comum
+    LOG_LEVEL: ${LOG_LEVEL:-info}
+
+x-db: &db
+  image: postgres:16-alpine
+  restart: unless-stopped
+  healthcheck: &db-health
+    interval: 5s
+    timeout: 3s
+    retries: 10
+    start_period: 10s
+
+services:
+  # ------------------------------------------------------------------ bancos
+  doadores-db:
+    <<: *db
+    environment:
+      POSTGRES_DB: doadores
+      POSTGRES_USER: doadores
+      POSTGRES_PASSWORD: ${DOADORES_DB_PASSWORD:?defina no .env}
+    volumes: [doadores-db-data:/var/lib/postgresql/data]
+    networks: [data-doadores]
+    healthcheck: { <<: *db-health, test: ["CMD-SHELL", "pg_isready -U doadores -d doadores"] }
+
+  comunidades-db:
+    <<: *db
+    environment:
+      POSTGRES_DB: comunidades
+      POSTGRES_USER: comunidades
+      POSTGRES_PASSWORD: ${COMUNIDADES_DB_PASSWORD:?defina no .env}
+    volumes: [comunidades-db-data:/var/lib/postgresql/data]
+    networks: [data-comunidades]
+    healthcheck: { <<: *db-health, test: ["CMD-SHELL", "pg_isready -U comunidades -d comunidades"] }
+
+  mobilizacoes-db:
+    <<: *db
+    environment:
+      POSTGRES_DB: mobilizacoes
+      POSTGRES_USER: mobilizacoes
+      POSTGRES_PASSWORD: ${MOBILIZACOES_DB_PASSWORD:?defina no .env}
+    volumes: [mobilizacoes-db-data:/var/lib/postgresql/data]
+    networks: [data-mobilizacoes]
+    healthcheck: { <<: *db-health, test: ["CMD-SHELL", "pg_isready -U mobilizacoes -d mobilizacoes"] }
+
+  informacoes-db:
+    <<: *db
+    environment:
+      POSTGRES_DB: informacoes
+      POSTGRES_USER: informacoes
+      POSTGRES_PASSWORD: ${INFORMACOES_DB_PASSWORD:?defina no .env}
+    volumes: [informacoes-db-data:/var/lib/postgresql/data]
+    networks: [data-informacoes]
+    healthcheck: { <<: *db-health, test: ["CMD-SHELL", "pg_isready -U informacoes -d informacoes"] }
+
+  # ------------------------------------------------------------------ broker
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    restart: unless-stopped
+    hostname: rabbitmq   # o RabbitMQ guarda dados por nome de nó; hostname fixo mantém o volume válido
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:?defina no .env}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:?defina no .env}
+    volumes: [rabbitmq-data:/var/lib/rabbitmq]
+    networks: [bus, ops]
+    ports: ["127.0.0.1:15672:15672"]
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_port_connectivity"]
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  # ------------------------------------------------------------------ serviços de domínio
+  doadores-service:
+    <<: *servico
+    build: ./services/doadores-service
+    image: 4life/doadores-service:1.0.0
+    environment:
+      <<: *env-comum
+      DB_HOST: doadores-db
+      DB_NAME: doadores
+      DB_USER: doadores
+      DB_PASSWORD: ${DOADORES_DB_PASSWORD}
+    networks: [app, data-doadores]
+    depends_on:
+      doadores-db: { condition: service_healthy }
+
+  comunidades-service:
+    <<: *servico
+    build: ./services/comunidades-service
+    image: 4life/comunidades-service:1.0.0
+    environment:
+      <<: *env-comum
+      DB_HOST: comunidades-db
+      DB_NAME: comunidades
+      DB_USER: comunidades
+      DB_PASSWORD: ${COMUNIDADES_DB_PASSWORD}
+      AMQP_HOST: rabbitmq
+      AMQP_USER: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+    networks: [app, bus, data-comunidades]
+    depends_on:
+      comunidades-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  mobilizacoes-service:
+    <<: *servico
+    build: ./services/mobilizacoes-service
+    image: 4life/mobilizacoes-service:1.0.0
+    environment:
+      <<: *env-comum
+      DB_HOST: mobilizacoes-db
+      DB_NAME: mobilizacoes
+      DB_USER: mobilizacoes
+      DB_PASSWORD: ${MOBILIZACOES_DB_PASSWORD}
+      AMQP_HOST: rabbitmq
+      AMQP_USER: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+    networks: [app, bus, data-mobilizacoes]
+    depends_on:
+      mobilizacoes-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  informacoes-service:
+    <<: *servico
+    build: ./services/informacoes-service
+    image: 4life/informacoes-service:1.0.0
+    environment:
+      <<: *env-comum
+      DB_HOST: informacoes-db
+      DB_NAME: informacoes
+      DB_USER: informacoes
+      DB_PASSWORD: ${INFORMACOES_DB_PASSWORD}
+    networks: [app, data-informacoes]
+    depends_on:
+      informacoes-db: { condition: service_healthy }
+
+  # ------------------------------------------------------------------ BFFs
+  bff-mobile:
+    <<: *servico
+    build: ./bff/bff-mobile
+    image: 4life/bff-mobile:1.0.0
+    environment: &env-bff
+      <<: *env-comum
+      DOADORES_URL: http://doadores-service:3001
+      COMUNIDADES_URL: http://comunidades-service:3002
+      MOBILIZACOES_URL: http://mobilizacoes-service:3003
+      INFORMACOES_URL: http://informacoes-service:3004
+    networks: [edge, app]
+    depends_on: &deps-bff
+      doadores-service: { condition: service_healthy }
+      comunidades-service: { condition: service_healthy }
+      mobilizacoes-service: { condition: service_healthy }
+      informacoes-service: { condition: service_healthy }
+
+  bff-web:
+    <<: *servico
+    build: ./bff/bff-web
+    image: 4life/bff-web:1.0.0
+    environment: *env-bff
+    networks: [edge, app]
+    depends_on: *deps-bff
+
+  # ------------------------------------------------------------------ gateway
+  gateway:
+    <<: *servico
+    build: ./gateway
+    image: 4life/gateway:1.0.0
+    environment:
+      <<: *env-comum
+      JWT_SECRET: ${JWT_SECRET:?defina no .env}
+      BFF_MOBILE_URL: http://bff-mobile:4001
+      BFF_WEB_URL: http://bff-web:4002
+    networks: [edge]
+    ports: ["${GATEWAY_PORT:-8080}:8080"]
+    depends_on:
+      bff-mobile: { condition: service_healthy }
+      bff-web: { condition: service_healthy }
+
+networks:
+  edge: {}
+  app: { internal: true }
+  bus: { internal: true }
+  data-doadores: { internal: true }
+  data-comunidades: { internal: true }
+  data-mobilizacoes: { internal: true }
+  data-informacoes: { internal: true }
+  ops: {}
+
+volumes:
+  doadores-db-data:
+  comunidades-db-data:
+  mobilizacoes-db-data:
+  informacoes-db-data:
+  rabbitmq-data:
