@@ -237,6 +237,7 @@ Remover tudo, inclusive os PVCs: `./scripts/k8s-down.sh`.
 | Sintoma | Solução |
 |---|---|
 | `DOADORES_DB_PASSWORD ... defina no .env` | Rode `./scripts/gerar-env.sh` |
+| `password authentication failed` depois de gerar um `.env` novo | O PostgreSQL guarda a senha da **primeira** inicialização no volume/PVC. Recrie os dados: `docker compose down -v` e/ou `./scripts/k8s-down.sh` |
 | Porta 8080 ocupada | Defina `GATEWAY_PORT=8081` no `.env` |
 | Ingress responde `upstream connect error` | Sobrou um LB de um cluster antigo. Rode `./scripts/k8s-down.sh && ./scripts/k8s-up.sh` |
 | macOS/Windows: IP do Ingress não responde | A rede do kind não é roteável a partir do host nesses sistemas (não testado). Use `kubectl -n 4life port-forward svc/gateway 8080:8080` |
