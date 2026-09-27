@@ -108,3 +108,138 @@ Sempre com `condition: service_healthy`, e os healthchecks são reais:
 Mesmo assim, os serviços **não dependem** dessa ordem: migrations e conexão
 com o broker usam retentativas com backoff. Isso é essencial no Kubernetes, que
 não tem `depends_on`.
+
+---
+
+# Kubernetes
+
+## 5. Ferramenta e topologia
+
+- **kind** com 3 nós (1 control-plane + 2 workers, arquivo
+  `k8s/kind-config.yaml`). Com dois workers dá para ver as réplicas espalhadas
+  (`topologySpreadConstraints`) e o reagendamento quando um pod morre.
+- **Ingress:** cloud-provider-kind. Os motivos estão em
+  [ingress-vs-gateway.md](ingress-vs-gateway.md).
+- **Imagens:** carregadas nos nós com `kind load docker-image` e
+  `imagePullPolicy: IfNotPresent`, sem registry.
+- **Manifests:** organizados por componente em `k8s/<componente>/`, cada um com
+  seu `kustomization.yaml`. `kubectl apply -k k8s/` aplica tudo no namespace
+  `4life`.
+
+## 6. Réplicas
+
+| Componente | Réplicas | Justificativa |
+|---|---|---|
+| gateway | 2 | ponto único de entrada: sem réplica, qualquer restart derruba tudo |
+| bff-mobile | 2 (HPA 2–5) | sem estado; recebe o maior volume (app); autoescala por CPU |
+| bff-web | 2 | sem estado; alta disponibilidade |
+| doadores, comunidades, informacoes | 2 | sem estado (o estado está no banco); tolera a perda de um nó |
+| mobilizacoes-service | **1** | começa com 1 **de propósito**, para a demonstração `1 → 3` (`scripts/demo-escala.sh`) |
+| bancos (x4), rabbitmq | 1 (StatefulSet) | PostgreSQL/RabbitMQ com várias réplicas exigem replicação própria (primário/réplica, quorum queues), o que está fora do escopo |
+
+- `RollingUpdate` com `maxUnavailable: 0, maxSurge: 1`: uma atualização nunca
+  reduz a capacidade.
+- Os serviços **podem** ter várias réplicas porque as migrations usam
+  `pg_advisory_lock`: só uma réplica aplica e as outras esperam.
+- **Trade-off do HPA:** o Deployment do bff-mobile declara `replicas: 2`, como o
+  enunciado pede. Se o HPA escalou para 4, um novo `kubectl apply` volta para 2
+  até o HPA reagir. Em produção, o campo `replicas` seria removido dos
+  Deployments geridos por HPA.
+
+## 7. Probes
+
+| Probe | Endpoint | Configuração | Efeito ao falhar |
+|---|---|---|---|
+| **startup** | `/health` | 2s × 30 (até 60s) | protege o boot: liveness e readiness só começam depois dela |
+| **liveness** | `/health` | 10s, 3 falhas | o kubelet **reinicia** o container (processo travado) |
+| **readiness** | `/ready` | 5s, 2 falhas | o pod **sai dos endpoints** do Service, sem reiniciar |
+
+- `/health` **não depende de nada externo**. Se dependesse do banco, uma queda
+  do PostgreSQL faria o kubelet reiniciar todos os pods em loop, sem resolver
+  nada.
+- `/ready` checa o **banco** e as **migrations**.
+- BFFs e gateway não têm estado, então o `/ready` deles responde assim que o
+  processo sobe. Checar dependências ali causaria falhas em cascata: um serviço
+  fora do ar tiraria do balanceamento o BFF inteiro, inclusive as telas que não
+  dependem dele.
+- Bancos usam `pg_isready`. O RabbitMQ usa `rabbitmq-diagnostics`.
+- **Demonstração:** `./scripts/k8s-demo-readiness.sh` derruba o banco do
+  doadores. Os pods ficam `READY=false` com `RESTARTS=0`, o Service fica sem
+  endpoints e o BFF responde 503. Quando o banco volta, tudo se recupera
+  sozinho.
+
+**Achado durante os testes (keep-alive × readiness).** A readiness remove o pod
+só para **conexões novas**. O BFF reutiliza conexões keep-alive (o Fastify
+oferece 72s), e por isso continuava mandando requisições ao pod "não pronto".
+Correção: o serviço responde com `Connection: close` enquanto não está pronto
+(hook `onSend` em `src/app.ts`), e a requisição seguinte volta a passar pelo
+Service. O mesmo princípio explica a demo de escala: o `/whoami` do BFF usa
+`agent: false` (conexão nova por chamada) e o script espera ~5s após o rollout
+para o kube-proxy de todos os nós aprender os novos endpoints. Sem essa pausa,
+medimos 49%/45%/6%; com ela, ~33% para cada pod.
+
+## 8. Services, StatefulSets e volumes
+
+- **Services ClusterIP** para gateway, BFFs e serviços. O DNS interno
+  (`doadores-service:3001`) é o mesmo nome usado no compose, então a
+  configuração dos BFFs é idêntica nos dois ambientes.
+- **Bancos e RabbitMQ:** StatefulSet + Service **headless**
+  (`clusterIP: None`). O nome `doadores-db` resolve direto para o pod
+  `doadores-db-0`, que tem identidade estável.
+- **Volumes:** `volumeClaimTemplates` cria um PVC por réplica
+  (`dados-doadores-db-0`, 1 Gi, StorageClass `standard` do kind). Se o pod
+  morre, o StatefulSet o recria **com o mesmo nome e o mesmo PVC**.
+  Demonstração: `./scripts/k8s-teste-persistencia.sh`.
+- O PGDATA fica num subdiretório (`/var/lib/postgresql/data/pgdata`), porque
+  alguns provisionadores criam `lost+found` na raiz do volume e o `initdb`
+  recusa diretório não vazio.
+
+## 9. Isolamento de rede (NetworkPolicy)
+
+É o equivalente das redes do compose:
+- `default-deny-ingress` nega todo tráfego de entrada no namespace;
+- cada pasta libera apenas quem pode chamar cada componente.
+
+| Destino | Quem pode entrar |
+|---|---|
+| gateway | qualquer origem (vem do Ingress), porta http |
+| bff-mobile / bff-web | pods do gateway |
+| `<x>-service` | pods com `component: bff` |
+| `<x>-db` | **somente** o `<x>-service` |
+| rabbitmq | comunidades-service e mobilizacoes-service |
+
+O kindnet (CNI padrão do kind) **aplica** NetworkPolicies.
+`./scripts/k8s-teste-isolamento.sh` mostra que as 4 conexões permitidas
+funcionam e que as 5 proibidas dão timeout, por exemplo doadores-service →
+comunidades-db.
+
+## 10. ConfigMaps e Secrets
+
+- **ConfigMap por componente** (`<componente>-config`) com o que **não** é
+  sensível: porta, hosts, nomes de banco, URLs dos serviços, timeouts e
+  parâmetros do JWT. Os pods usam `envFrom`.
+- **Secrets:** senhas dos bancos, credenciais do RabbitMQ e `JWT_SECRET`,
+  injetados com `secretKeyRef`.
+  - **Nunca** são versionados.
+  - `k8s/secret.example.yaml` mostra só a estrutura.
+  - `scripts/k8s-create-secrets.sh` lê o `.env` (que está no `.gitignore`) e cria
+    os Secrets de forma idempotente.
+- **Downward API:** `POD_NAME` vem de `metadata.name` e é usado pelo `/whoami`.
+- O código **falha no boot** se faltar variável obrigatória (`obrigatoria()` em
+  `src/config.ts`), e o gateway recusa `JWT_SECRET` com menos de 32 caracteres.
+- **Endurecimento dos pods:**
+  - `runAsNonRoot`, `readOnlyRootFilesystem` e `allowPrivilegeEscalation: false`;
+  - todas as capabilities removidas e `seccompProfile: RuntimeDefault`.
+
+## 11. Recursos (requests/limits)
+
+| Componente | requests | limits |
+|---|---|---|
+| gateway, BFFs, serviços | 50m CPU / 96 Mi | 500m CPU / 256 Mi |
+| PostgreSQL | 50m / 128 Mi | 1 CPU / 512 Mi |
+| RabbitMQ | 100m / 256 Mi | 1 CPU / 512 Mi |
+
+Os valores foram medidos com `kubectl top pods`: Node em repouso usa ~1m CPU e
+~25 Mi. O request baixo permite que tudo caiba no kind de um notebook. O limit
+de memória evita que um vazamento derrube o nó. O request de CPU é a base do
+cálculo do HPA (70% de 50m).

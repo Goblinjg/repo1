@@ -1,0 +1,15 @@
+# Aplica o 4Life inteiro: kubectl apply -k k8s/
+# Os Secrets NÃO estão aqui (não são versionados): crie antes com scripts/k8s-create-secrets.sh
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: 4life
+resources:
+  - namespace
+  - rabbitmq
+  - doadores
+  - comunidades
+  - mobilizacoes
+  - informacoes
+  - bff-mobile
+  - bff-web
+  - gateway

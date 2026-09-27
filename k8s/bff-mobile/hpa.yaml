@@ -1,0 +1,20 @@
+# Opcional: autoescala do bff-mobile por CPU (requer metrics-server, instalado pelo k8s-up.sh).
+# O HPA fica no bff-mobile (e não no mobilizacoes-service) para não brigar com o
+# `kubectl scale` manual da demonstração de escala.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: bff-mobile
+  labels: { app.kubernetes.io/name: bff-mobile, app.kubernetes.io/part-of: 4life }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: bff-mobile }
+  minReplicas: 2
+  maxReplicas: 5
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }   # 70% do request (50m)
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 60

@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mobilizacoes-service-config
+  labels: { app.kubernetes.io/name: mobilizacoes-service, app.kubernetes.io/part-of: 4life }
+data:
+  PORT: "3003"
+  LOG_LEVEL: info
+  DB_HOST: mobilizacoes-db
+  DB_PORT: "5432"
+  DB_NAME: mobilizacoes
+  DB_USER: mobilizacoes
+  AMQP_HOST: rabbitmq
+  AMQP_PORT: "5672"

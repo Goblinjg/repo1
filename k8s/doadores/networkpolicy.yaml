@@ -1,0 +1,31 @@
+# doadores-service: só os BFFs podem chamá-lo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: doadores-service-permite-bffs
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: doadores-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: bff }
+      ports:
+        - { port: http }
+---
+# doadores-db: SOMENTE o doadores-service alcança este banco (equivale à rede data-doadores do compose).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: doadores-db-permite-somente-doadores
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: doadores-db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: doadores-service }
+      ports:
+        - { port: postgres }

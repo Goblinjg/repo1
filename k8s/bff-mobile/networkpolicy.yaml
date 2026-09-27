@@ -1,0 +1,15 @@
+# bff-mobile: só o gateway pode chamá-lo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: bff-mobile-permite-gateway
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: bff-mobile }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: gateway }
+      ports:
+        - { port: http }

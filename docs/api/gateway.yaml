@@ -16,7 +16,7 @@ info:
 servers:
   - url: http://localhost:8080
     description: docker compose
-  - url: http://4life.localhost
+  - url: http://4life.test
     description: Kubernetes (Ingress)
 security:
   - bearer: []

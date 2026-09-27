@@ -7,7 +7,9 @@ import { config } from './config.js';
 export const pool = new pg.Pool({ ...config.db, max: 10, connectionTimeoutMillis: 3000 });
 pool.on('error', () => {}); // conexões ociosas perdidas são recriadas sob demanda
 
-export const estado = { migrado: false };
+// migrado: migrations aplicadas; bancoOk: resultado da última checagem periódica do banco.
+export const estado = { migrado: false, bancoOk: false };
+export const pronto = () => estado.migrado && estado.bancoOk;
 
 // Chave arbitrária do advisory lock: garante que só uma réplica aplica migrations por vez.
 const LOCK_MIGRATIONS = 4104;

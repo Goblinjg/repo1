@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: gateway-config
+  labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: 4life }
+data:
+  PORT: "8080"
+  LOG_LEVEL: info
+  UPSTREAM_TIMEOUT_MS: "5000"
+  JWT_ISSUER: 4life-gateway
+  JWT_EXPIRES_IN_S: "3600"
+  BFF_MOBILE_URL: http://bff-mobile:4001
+  BFF_WEB_URL: http://bff-web:4002

@@ -1,14 +1,20 @@
 #!/usr/bin/env bash
 # Teste ponta a ponta pelo gateway: cadastro → login → comunidade → mobilização → evento.
-# Uso: BASE_URL=http://localhost:8080 ./scripts/smoke-test.sh       (compose, padrão)
-#      BASE_URL=http://4life.localhost ./scripts/smoke-test.sh      (Kubernetes/Ingress)
+# Uso: ./scripts/smoke-test.sh                                                  (compose, padrão)
+#      INGRESS_IP=<ip> BASE_URL=http://4life.test ./scripts/smoke-test.sh        (Kubernetes/Ingress)
 set -euo pipefail
 BASE="${BASE_URL:-http://localhost:8080}"
 EMAIL="smoke-$(date +%s)-$RANDOM@4life.local"
 SENHA="senha-de-teste-123"
 ok()   { printf '  \033[32m✔\033[0m %s\n' "$*"; }
 falha(){ printf '  \033[31m✘ %s\033[0m\n' "$*"; exit 1; }
-req()  { curl -sS -o /tmp/smoke.$$ -w '%{http_code}' "$@"; }
+# No K8s: INGRESS_IP=<ip> BASE_URL=http://4life.test → o curl resolve o host para o IP do Ingress.
+RESOLVE=()
+if [[ -n ${INGRESS_IP:-} ]]; then
+  HOST=${BASE#*://}; HOST=${HOST%%/*}
+  RESOLVE=(--resolve "${HOST}:80:${INGRESS_IP}")
+fi
+req()  { curl -sS "${RESOLVE[@]}" -o /tmp/smoke.$$ -w '%{http_code}' "$@"; }
 corpo(){ cat /tmp/smoke.$$; }
 trap 'rm -f /tmp/smoke.$$' EXIT
 

@@ -1,0 +1,66 @@
+# Banco exclusivo do doadores-service: StatefulSet (identidade estável + PVC próprio) e Service headless.
+apiVersion: v1
+kind: Service
+metadata:
+  name: doadores-db
+  labels: { app.kubernetes.io/name: doadores-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
+spec:
+  clusterIP: None          # headless: o DNS doadores-db aponta direto para o pod doadores-db-0
+  selector: { app.kubernetes.io/name: doadores-db }
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: doadores-db
+  labels: { app.kubernetes.io/name: doadores-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
+spec:
+  serviceName: doadores-db
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: doadores-db }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: doadores-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
+    spec:
+      securityContext:
+        fsGroup: 70            # usuário postgres da imagem alpine
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - name: POSTGRES_DB
+              valueFrom: { configMapKeyRef: { name: doadores-service-config, key: DB_NAME } }
+            - name: POSTGRES_USER
+              valueFrom: { configMapKeyRef: { name: doadores-service-config, key: DB_USER } }
+            - name: POSTGRES_PASSWORD
+              valueFrom: { secretKeyRef: { name: doadores-db-credentials, key: password } }
+            - name: PGDATA         # subdiretório: o volume pode vir com lost+found na raiz
+              value: /var/lib/postgresql/data/pgdata
+          volumeMounts:
+            - { name: dados, mountPath: /var/lib/postgresql/data }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: "1", memory: 512Mi }
+          livenessProbe:
+            exec: { command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'] }
+            initialDelaySeconds: 20
+            periodSeconds: 10
+            failureThreshold: 6
+          readinessProbe:
+            exec: { command: [sh, -c, 'pg_isready -U "$POSTGRES_USER" -d "$POSTGRES_DB"'] }
+            periodSeconds: 5
+            failureThreshold: 3
+  # Cada réplica ganha um PVC próprio (doadores-db-dados-doadores-db-0), que sobrevive à morte do pod.
+  volumeClaimTemplates:
+    - metadata:
+        name: dados
+        labels: { app.kubernetes.io/name: doadores-db, app.kubernetes.io/part-of: 4life }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources:
+          requests: { storage: 1Gi }

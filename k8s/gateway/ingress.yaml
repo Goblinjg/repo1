@@ -1,0 +1,15 @@
+# Entrada HTTP externa do cluster. Só encaminha para o gateway, nunca direto para BFFs/serviços.
+# Autenticação, JWT e roteamento por cliente continuam no gateway (ver docs/k8s/ingress-vs-gateway.md).
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: 4life
+  labels: { app.kubernetes.io/name: gateway, app.kubernetes.io/part-of: 4life }
+spec:
+  rules:
+    - host: 4life.test
+      http:
+        paths:
+          - { path: /api,    pathType: Prefix, backend: { service: { name: gateway, port: { name: http } } } }
+          - { path: /auth,   pathType: Prefix, backend: { service: { name: gateway, port: { name: http } } } }
+          - { path: /health, pathType: Exact,  backend: { service: { name: gateway, port: { name: http } } } }

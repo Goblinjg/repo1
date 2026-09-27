@@ -1,0 +1,31 @@
+# mobilizacoes-service: só os BFFs podem chamá-lo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mobilizacoes-service-permite-bffs
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: mobilizacoes-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: bff }
+      ports:
+        - { port: http }
+---
+# mobilizacoes-db: SOMENTE o mobilizacoes-service alcança este banco (equivale à rede data-mobilizacoes do compose).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mobilizacoes-db-permite-somente-mobilizacoes
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: mobilizacoes-db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: mobilizacoes-service }
+      ports:
+        - { port: postgres }

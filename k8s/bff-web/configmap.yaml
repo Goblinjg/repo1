@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: bff-web-config
+  labels: { app.kubernetes.io/name: bff-web, app.kubernetes.io/part-of: 4life }
+data:
+  PORT: "4002"
+  LOG_LEVEL: info
+  UPSTREAM_TIMEOUT_MS: "3000"
+  DOADORES_URL: http://doadores-service:3001
+  COMUNIDADES_URL: http://comunidades-service:3002
+  MOBILIZACOES_URL: http://mobilizacoes-service:3003
+  INFORMACOES_URL: http://informacoes-service:3004

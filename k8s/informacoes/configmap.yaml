@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: informacoes-service-config
+  labels: { app.kubernetes.io/name: informacoes-service, app.kubernetes.io/part-of: 4life }
+data:
+  PORT: "3004"
+  LOG_LEVEL: info
+  DB_HOST: informacoes-db
+  DB_PORT: "5432"
+  DB_NAME: informacoes
+  DB_USER: informacoes

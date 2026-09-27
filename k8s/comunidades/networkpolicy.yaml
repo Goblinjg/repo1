@@ -1,0 +1,31 @@
+# comunidades-service: só os BFFs podem chamá-lo.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: comunidades-service-permite-bffs
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: comunidades-service }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/component: bff }
+      ports:
+        - { port: http }
+---
+# comunidades-db: SOMENTE o comunidades-service alcança este banco (equivale à rede data-comunidades do compose).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: comunidades-db-permite-somente-comunidades
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: comunidades-db }
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels: { app.kubernetes.io/name: comunidades-service }
+      ports:
+        - { port: postgres }

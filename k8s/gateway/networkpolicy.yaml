@@ -1,0 +1,12 @@
+# gateway: ponto de entrada — aceita tráfego do Ingress (externo ao namespace) na porta http.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: gateway-permite-entrada
+spec:
+  podSelector:
+    matchLabels: { app.kubernetes.io/name: gateway }
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - { port: http }

@@ -1,0 +1,9 @@
+# Nega TODO tráfego de entrada entre pods do namespace; cada componente libera
+# explicitamente só quem pode chamá-lo (networkpolicy.yaml de cada pasta).
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: default-deny-ingress
+spec:
+  podSelector: {}
+  policyTypes: [Ingress]
