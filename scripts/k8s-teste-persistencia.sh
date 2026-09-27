@@ -26,6 +26,14 @@ echo "   pod novo (uid $(kubectl -n $NS get pod doadores-db-0 -o jsonpath='{.met
 kubectl -n $NS get pod doadores-db-0 -o jsonpath='   volume dados → PVC {.spec.volumes[?(@.name=="dados")].persistentVolumeClaim.claimName}{"\n"}'
 
 passo "4. login com o doador cadastrado antes da morte do pod"
-"${C[@]}" http://4life.test/auth/login -H 'content-type: application/json' -d "{\"email\":\"$EMAIL\",\"senha\":\"$SENHA\"}" \
-  | jq -r '"   login OK, token: " + .token[0:25] + "..."'
+# Logo após o banco voltar, conexões antigas do pool do serviço podem falhar uma vez; por isso
+# tentamos algumas vezes e mostramos quantas foram necessárias.
+for tentativa in $(seq 1 15); do
+  if RESP=$("${C[@]}" http://4life.test/auth/login -H 'content-type: application/json' -d "{\"email\":\"$EMAIL\",\"senha\":\"$SENHA\"}"); then
+    echo "$RESP" | jq -r --arg t "$tentativa" '"   login OK na tentativa \($t), token: " + .token[0:25] + "..."'
+    break
+  fi
+  [[ $tentativa == 15 ]] && { echo "   login falhou após 15 tentativas" >&2; exit 1; }
+  sleep 1
+done
 echo "== o dado sobreviveu: está no PersistentVolume, não no container ✔"

@@ -15,7 +15,12 @@ for bin in docker kind kubectl; do command -v $bin > /dev/null || { echo "Pré-r
 
 passo "1/7 cluster kind"
 if kind get clusters | grep -qx "$CLUSTER"; then echo "cluster '$CLUSTER' já existe"
-else kind create cluster --config k8s/kind-config.yaml; fi
+else
+  # LBs órfãos de um cluster anterior apontariam para pods inexistentes
+  docker ps -aq --filter name=^kindccm- | xargs -r docker rm -f > /dev/null
+  docker rm -f 4life-cloud-provider-kind > /dev/null 2>&1 || true
+  kind create cluster --config k8s/kind-config.yaml
+fi
 kubectl config use-context "kind-$CLUSTER" > /dev/null
 
 passo "2/7 cloud-provider-kind (implementa Ingress e LoadBalancer no kind)"

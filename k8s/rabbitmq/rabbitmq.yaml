@@ -1,8 +1,21 @@
 # Broker de mensagens: StatefulSet com PVC (filas duráveis sobrevivem à morte do pod).
+# ClusterIP para os clientes (AMQP_HOST=rabbitmq) + headless para a identidade do StatefulSet.
 apiVersion: v1
 kind: Service
 metadata:
   name: rabbitmq
+  labels: { app.kubernetes.io/name: rabbitmq, app.kubernetes.io/component: broker, app.kubernetes.io/part-of: 4life }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: rabbitmq }
+  ports:
+    - { name: amqp, port: 5672, targetPort: amqp }
+    - { name: management, port: 15672, targetPort: management }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: rabbitmq-headless
   labels: { app.kubernetes.io/name: rabbitmq, app.kubernetes.io/component: broker, app.kubernetes.io/part-of: 4life }
 spec:
   clusterIP: None
@@ -17,7 +30,7 @@ metadata:
   name: rabbitmq
   labels: { app.kubernetes.io/name: rabbitmq, app.kubernetes.io/component: broker, app.kubernetes.io/part-of: 4life }
 spec:
-  serviceName: rabbitmq
+  serviceName: rabbitmq-headless
   replicas: 1
   selector:
     matchLabels: { app.kubernetes.io/name: rabbitmq }

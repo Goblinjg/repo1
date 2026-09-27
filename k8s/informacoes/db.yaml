@@ -1,11 +1,27 @@
-# Banco exclusivo do informacoes-service: StatefulSet (identidade estável + PVC próprio) e Service headless.
+# Banco exclusivo do informacoes-service: StatefulSet (identidade estável + PVC próprio), Service ClusterIP e Service headless.
+# Service ClusterIP: é o endereço usado pelo informacoes-service (DB_HOST=informacoes-db).
+# O VIP sempre resolve no DNS; o kube-proxy só encaminha quando o pod está Ready.
 apiVersion: v1
 kind: Service
 metadata:
   name: informacoes-db
   labels: { app.kubernetes.io/name: informacoes-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
 spec:
-  clusterIP: None          # headless: o DNS informacoes-db aponta direto para o pod informacoes-db-0
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: informacoes-db }
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }
+---
+# Service headless: dá identidade de rede estável ao pod do StatefulSet (informacoes-db-0.informacoes-db-headless).
+# Não é usado pelos clientes: headless só publica DNS de pods prontos e o CoreDNS guarda a
+# resposta negativa em cache (até 30s), então o nome "some" logo depois de o banco reiniciar.
+apiVersion: v1
+kind: Service
+metadata:
+  name: informacoes-db-headless
+  labels: { app.kubernetes.io/name: informacoes-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
+spec:
+  clusterIP: None
   selector: { app.kubernetes.io/name: informacoes-db }
   ports:
     - { name: postgres, port: 5432, targetPort: postgres }
@@ -16,7 +32,7 @@ metadata:
   name: informacoes-db
   labels: { app.kubernetes.io/name: informacoes-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
 spec:
-  serviceName: informacoes-db
+  serviceName: informacoes-db-headless
   replicas: 1
   selector:
     matchLabels: { app.kubernetes.io/name: informacoes-db }

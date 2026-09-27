@@ -183,9 +183,17 @@ medimos 49%/45%/6%; com ela, ~33% para cada pod.
 - **Services ClusterIP** para gateway, BFFs e serviços. O DNS interno
   (`doadores-service:3001`) é o mesmo nome usado no compose, então a
   configuração dos BFFs é idêntica nos dois ambientes.
-- **Bancos e RabbitMQ:** StatefulSet + Service **headless**
-  (`clusterIP: None`). O nome `doadores-db` resolve direto para o pod
-  `doadores-db-0`, que tem identidade estável.
+- **Bancos e RabbitMQ:** StatefulSet com **dois** Services cada:
+  - `<db>-headless` (`clusterIP: None`) é o `serviceName` do StatefulSet e dá
+    identidade estável ao pod (`doadores-db-0.doadores-db-headless`);
+  - `<db>` (**ClusterIP**) é o endereço usado pelos clientes (`DB_HOST=doadores-db`).
+
+  **Achado nos testes:** a primeira versão usava só o headless. Depois de matar o
+  pod do banco, o serviço recebia `getaddrinfo ENOTFOUND doadores-db` por vários
+  segundos. O Service headless só publica DNS de pods *prontos*, e o CoreDNS
+  guarda a resposta negativa em cache (`cache 30`). Com ClusterIP, o nome sempre
+  resolve para o VIP e o kube-proxy passa a encaminhar assim que o pod fica
+  Ready.
 - **Volumes:** `volumeClaimTemplates` cria um PVC por réplica
   (`dados-doadores-db-0`, 1 Gi, StorageClass `standard` do kind). Se o pod
   morre, o StatefulSet o recria **com o mesmo nome e o mesmo PVC**.
