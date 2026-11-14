@@ -3,9 +3,10 @@ info:
   title: bff-web
   version: 1.0.0
   description: |
-    Backend for Frontend da aplicação web (painéis e administração de comunidades).
-    Exposto pelo gateway sob `/api/web`. Também atende a verificação de credenciais usada
-    pelo gateway no login (`/auth/verificar-credenciais`, não exposto externamente).
+    Contrato-alvo do Backend for Frontend da aplicação web (painéis e administração de comunidades).
+    Exposto pelo gateway sob `/api/v1/web`. O protótipo atual ainda usa `/api/web`.
+    Também atende a verificação de credenciais usada pelo gateway no login
+    (`/auth/verificar-credenciais`, não exposto externamente).
 servers:
   - url: http://bff-web:4002
 paths:
@@ -15,45 +16,109 @@ paths:
     post:
       summary: (Interno — somente o gateway) verifica credenciais no doadores-service
       requestBody: { required: true, content: { application/json: { schema: { type: object, required: [email, senha], properties: { email: { type: string }, senha: { type: string } } } } } }
-      responses: { '200': { description: 'Válidas: { id, nome, email }' }, '401': { description: Inválidas } }
+      responses: { '200': { description: Credenciais válidas, content: { application/json: { schema: { $ref: '#/components/schemas/CredenciaisValidas' } } } }, '401': { description: Credenciais inválidas } }
   /cadastro:
-    post: { summary: Cadastro de doador (público), responses: { '201': { description: Criado }, '409': { description: E-mail em uso } } }
+    post:
+      summary: Cadastro de doador (público)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/NovoDoador' } } } }
+      responses: { '201': { description: Criado, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/Doador' } } } }, '400': { description: Dados inválidos }, '409': { description: E-mail em uso } }
   /painel:
     get:
       summary: Painel do usuário
       description: Perfil + comunidades (com papel) + mobilizações futuras dessas comunidades + mobilizações em que tem interesse.
-      responses: { '200': { description: OK } }
+      responses: { '200': { description: Painel do usuário, content: { application/json: { schema: { $ref: '#/components/schemas/PainelUsuario' } } } }, '401': { description: Token ausente ou inválido } }
   /comunidades:
     get:
       summary: Lista comunidades
       parameters:
         - { name: cidade, in: query, schema: { type: string } }
         - { name: uf, in: query, schema: { type: string } }
-      responses: { '200': { description: OK } }
-    post: { summary: Cria comunidade (usuário vira admin), responses: { '201': { description: Criada } } }
+      responses: { '200': { description: Lista de comunidades, content: { application/json: { schema: { type: array, items: { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } } } } }, '401': { description: Token ausente ou inválido } }
+    post:
+      summary: Cria comunidade (usuário vira admin)
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NovaComunidade' } } } }
+      responses: { '201': { description: Criada, content: { application/json: { schema: { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } } } }, '400': { description: Dados inválidos } }
   /comunidades/{id}:
     get:
       summary: Detalhe agregado
       description: Comunidade + membros (com nome do doador) + mobilizações da comunidade.
       parameters: [ { $ref: '#/components/parameters/Id' } ]
-      responses: { '200': { description: OK }, '404': { description: Não encontrada } }
+      responses: { '200': { description: Detalhe agregado, content: { application/json: { schema: { $ref: '#/components/schemas/ComunidadeDetalhe' } } } }, '404': { description: Não encontrada } }
   /comunidades/{id}/membros:
-    post: { summary: Usuário entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: OK }, '409': { description: Já é membro } } }
+    post: { summary: Usuário entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: Incluído, content: { application/json: { schema: { $ref: 'comunidades-service.yaml#/components/schemas/Membro' } } } }, '404': { description: Comunidade não encontrada }, '409': { description: Já é membro } } }
   /comunidades/{id}/mobilizacoes:
     post:
       summary: Cria mobilização da comunidade
       description: |
         Valida no comunidades-service que o usuário é **admin** da comunidade (403 caso contrário)
-        e cria no mobilizacoes-service, que publica `mobilizacao.criada`.
+        e inicia a SAGA de criação. Contrato-alvo: responde `202` com recurso `PENDENTE`
+        e `Location`; o protótipo sem SAGA ainda responde `201` após criação síncrona.
       parameters: [ { $ref: '#/components/parameters/Id' } ]
-      responses: { '201': { description: Criada }, '403': { description: Não é admin }, '404': { description: Comunidade não encontrada } }
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NovaMobilizacao' } } } }
+      responses:
+        '202':
+          description: Saga iniciada; acompanhe o recurso enquanto estiver PENDENTE
+          headers:
+            Location: { schema: { type: string, format: uri-reference }, description: URI do recurso de mobilização }
+          content: { application/json: { schema: { $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao' } } }
+        '400': { description: Dados inválidos }
+        '403': { description: Não é admin }
+        '404': { description: Comunidade não encontrada }
   /mobilizacoes/{id}:
     get:
       summary: Detalhe da mobilização + hemocentro (informacoes) + comunidade
       parameters: [ { $ref: '#/components/parameters/Id' } ]
-      responses: { '200': { description: OK }, '404': { description: Não encontrada } }
-  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK } } } }
-  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK } } } }
+      responses: { '200': { description: Detalhe enriquecido, content: { application/json: { schema: { $ref: '#/components/schemas/MobilizacaoDetalhe' } } } }, '404': { description: Não encontrada } }
+  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } }
 components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+  schemas:
+    CredenciaisValidas:
+      type: object
+      required: [id, nome, email]
+      properties: { id: { type: string, format: uuid }, nome: { type: string }, email: { type: string, format: email } }
+    NovaComunidade:
+      type: object
+      required: [nome, cidade, uf]
+      properties: { nome: { type: string, minLength: 3 }, descricao: { type: string }, cidade: { type: string }, uf: { type: string, minLength: 2, maxLength: 2 } }
+    NovaMobilizacao:
+      type: object
+      required: [titulo, dataHora]
+      properties: { titulo: { type: string, minLength: 3 }, descricao: { type: string }, dataHora: { type: string, format: date-time }, hemocentroId: { type: string, format: uuid, nullable: true }, local: { type: string }, vagas: { type: integer, minimum: 1, nullable: true } }
+    PainelUsuario:
+      type: object
+      properties:
+        perfil: { $ref: 'doadores-service.yaml#/components/schemas/Doador' }
+        comunidades: { type: array, nullable: true, items: { $ref: '#/components/schemas/ComunidadePainel' } }
+        mobilizacoesComInteresse: { type: array, nullable: true, items: { $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao' } }
+        avisos: { type: array, items: { type: string } }
+    ComunidadePainel:
+      allOf:
+        - $ref: 'comunidades-service.yaml#/components/schemas/Comunidade'
+        - type: object
+          properties:
+            meuPapel: { type: string, enum: [admin, membro], nullable: true }
+            proximasMobilizacoes: { type: array, nullable: true, items: { $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao' } }
+    ComunidadeDetalhe:
+      allOf:
+        - $ref: 'comunidades-service.yaml#/components/schemas/Comunidade'
+        - type: object
+          properties:
+            membros: { type: array, items: { $ref: '#/components/schemas/MembroComNome' } }
+            mobilizacoes: { type: array, nullable: true, items: { $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao' } }
+            avisos: { type: array, items: { type: string } }
+    MembroComNome:
+      allOf:
+        - $ref: 'comunidades-service.yaml#/components/schemas/Membro'
+        - type: object
+          properties: { nome: { type: string, nullable: true } }
+    MobilizacaoDetalhe:
+      allOf:
+        - $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao'
+        - type: object
+          properties:
+            hemocentro: { allOf: [ { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } ], nullable: true }
+            comunidade: { allOf: [ { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } ], nullable: true }
+            avisos: { type: array, items: { type: string } }

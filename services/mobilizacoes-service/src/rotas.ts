@@ -27,14 +27,16 @@ interface NovaMobilizacao {
 }
 
 export async function rotas(app: FastifyInstance): Promise<void> {
-  // Publica após o commit. Se o broker falhar, o evento fica pendente na outbox
-  // para o relay da Parte 4 — assim ele não se perde.
+  // Protótipo: publica após o commit. Se a publicação falhar, tenta guardar o
+  // evento na outbox como fallback best-effort. Como essa gravação é posterior
+  // e separada da escrita de domínio, ainda há uma janela de perda; o desenho
+  // transacional com relay está especificado para a etapa seguinte.
   async function publicarOuGuardar(evento: Evento, agregadoId: string): Promise<void> {
     try {
       await publicar(evento);
       app.log.info({ eventoId: evento.id, tipo: evento.tipo }, 'evento publicado');
     } catch (erro) {
-      app.log.error({ err: (erro as Error).message, eventoId: evento.id }, 'falha ao publicar; evento guardado na outbox');
+      app.log.error({ err: (erro as Error).message, eventoId: evento.id }, 'falha ao publicar; tentando fallback na outbox');
       await pool.query(
         `INSERT INTO outbox (id, agregado, agregado_id, tipo, payload) VALUES ($1, 'mobilizacao', $2, $3, $4)`,
         [evento.id, agregadoId, evento.tipo, JSON.stringify(evento)],

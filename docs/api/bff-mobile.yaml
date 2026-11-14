@@ -3,9 +3,11 @@ info:
   title: bff-mobile
   version: 1.0.0
   description: |
-    Backend for Frontend do app mobile. Exposto externamente pelo gateway sob `/api/mobile`
-    (ex.: `GET /api/mobile/inicio` → `GET /inicio`). O usuário autenticado chega no cabeçalho
+    Contrato-alvo do Backend for Frontend do app mobile. Exposto externamente pelo gateway sob `/api/v1/mobile`
+    (ex.: `GET /api/v1/mobile/inicio` → `GET /inicio`). O usuário autenticado chega no cabeçalho
     `x-user-id`, injetado pelo gateway. Respostas enxutas, pensadas para telas pequenas.
+    O protótipo atual ainda usa `/api/mobile` e não emite `_links`; a versão URI e
+    o HATEOAS abaixo são decisões de arquitetura ainda não implementadas.
 servers:
   - url: http://bff-mobile:4001
 paths:
@@ -37,15 +39,26 @@ paths:
                   dica: { type: object, nullable: true, properties: { titulo: { type: string }, resumo: { type: string } } }
                   avisos: { type: array, items: { type: string } }
   /perfil:
-    get: { summary: Perfil do usuário autenticado, responses: { '200': { description: OK } } }
-    patch: { summary: Atualiza perfil, responses: { '200': { description: OK } } }
+    get: { summary: Perfil do usuário autenticado, responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/Doador' } } } }, '401': { description: Token ausente ou inválido } } }
+    patch:
+      summary: Atualiza perfil
+      requestBody: { required: true, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/AtualizaDoador' } } } }
+      responses: { '200': { description: Atualizado, content: { application/json: { schema: { $ref: 'doadores-service.yaml#/components/schemas/Doador' } } } }, '400': { description: Dados inválidos }, '401': { description: Token ausente ou inválido } }
   /mobilizacoes:
     get:
       summary: Próximas mobilizações (cards)
       parameters: [ { name: cidade, in: query, schema: { type: string } } ]
       responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/MobilizacaoCard' } } } } } }
   /mobilizacoes/{id}:
-    get: { summary: Detalhe da mobilização, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '200': { description: OK }, '404': { description: Não encontrada } } }
+    get:
+      summary: Detalhe HATEOAS da mobilização
+      description: |
+        Contrato-alvo. Os links variam conforme estado, vagas e interesse do usuário.
+        O protótipo atual retorna o recurso sem `_links`.
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/MobilizacaoDetalhe' } } } }
+        '404': { description: Não encontrada }
   /mobilizacoes/{id}/interesse:
     parameters: [ { $ref: '#/components/parameters/Id' } ]
     post: { summary: Registra interesse do usuário, responses: { '201': { description: OK }, '409': { description: Já registrado }, '422': { description: Lotada } } }
@@ -54,15 +67,15 @@ paths:
     get:
       summary: Busca comunidades
       parameters: [ { name: cidade, in: query, schema: { type: string } } ]
-      responses: { '200': { description: OK } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } } } } }, '401': { description: Token ausente ou inválido } }
   /comunidades/{id}/entrar:
     post: { summary: Entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: OK }, '409': { description: Já é membro } } }
   /comunidades/{id}/sair:
-    delete: { summary: Sai da comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: OK } } }
-  /info/faq: { get: { summary: FAQ (público), responses: { '200': { description: OK } } } }
-  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK } } } }
-  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK } } } }
-  /info/conteudos/{slug}: { get: { summary: Conteúdo (público), parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: OK } } } }
+    delete: { summary: Sai da comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: Removido }, '404': { description: Não é membro } } }
+  /info/faq: { get: { summary: FAQ (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: object, required: [id, pergunta, resposta, categoria], properties: { id: { type: string }, pergunta: { type: string }, resposta: { type: string }, categoria: { type: string } } } } } } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } }
+  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } }
+  /info/conteudos/{slug}: { get: { summary: Conteúdo (público), parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/Conteudo' } } } }, '404': { description: Não encontrado } } }
   /diagnostico/whoami:
     get:
       summary: Cadeia de réplicas que atendeu a requisição (demonstração de escala)
@@ -77,6 +90,27 @@ components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
   schemas:
+    LinkAcao:
+      type: object
+      required: [href, method]
+      properties:
+        href: { type: string, format: uri-reference }
+        method: { type: string, enum: [GET, POST, PATCH, DELETE] }
+    MobilizacaoDetalhe:
+      type: object
+      description: Recurso de mobilização com ações disponíveis para o usuário atual.
+      properties:
+        id: { type: string, format: uuid }
+        titulo: { type: string }
+        dataHora: { type: string, format: date-time }
+        cidade: { type: string }
+        estado: { type: string, enum: [PENDENTE, CONFIRMADA, CANCELADA] }
+        vagas: { type: integer, nullable: true }
+        totalInteressados: { type: integer }
+        _links:
+          type: object
+          description: Links condicionais; por exemplo, `registrar-interesse` só aparece se houver vaga e o usuário não estiver inscrito.
+          additionalProperties: { $ref: '#/components/schemas/LinkAcao' }
     MobilizacaoCard:
       type: object
       properties:
