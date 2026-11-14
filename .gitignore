@@ -4,3 +4,6 @@ dist/
 *.log
 k8s/**/secret.yaml
 .DS_Store
+
+# notas pessoais do vault (não versionar)
+NOTAS-VAULT.md
