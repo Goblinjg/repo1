@@ -29,7 +29,9 @@ Dicas de gravação:
 > sangue. Na Parte 3 containerizamos os 7 componentes, subimos tudo com Docker
 > Compose e orquestramos no Kubernetes. Cada um de nós vai mostrar uma parte."
 
-**Na tela:** o README, rolando até o diagrama de arquitetura.
+**Na tela:** o [`docs/diagrama-completo.md`](diagrama-completo.md), o diagrama único com todos os
+componentes. Apontar rapidamente Ingress → gateway → BFFs → serviços → bancos/RabbitMQ e o orquestrador
+da SAGA dentro do `mobilizacoes-service`.
 
 ---
 
