@@ -41,6 +41,9 @@
 
 ## 1.1 Diagrama de componentes e de comunicação
 
+> Visão resumida. O diagrama com **todos** os componentes (incluindo o orquestrador da SAGA, a outbox,
+> o modelo de leitura do CQRS e os recursos do Kubernetes) está em [`../diagrama-completo.md`](../diagrama-completo.md).
+
 ```mermaid
 flowchart TB
     subgraph Clientes

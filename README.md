@@ -102,6 +102,10 @@ O assistente utilizará uma **base de conhecimento própria**, permitindo respos
 
 ![Fluxo do 4Life](imagens/fluxo4Life.png)
 
+A arquitetura completa, com **todos** os componentes (gateway, BFFs, serviços, orquestrador da SAGA,
+outbox, CQRS, RabbitMQ, bancos e recursos do Kubernetes) num único diagrama, está em
+[`docs/diagrama-completo.md`](docs/diagrama-completo.md).
+
 ---
 
 ## Principais conceitos da plataforma

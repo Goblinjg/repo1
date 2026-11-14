@@ -5,6 +5,8 @@
 > [`docs/adr/`](adr/). O código é um protótipo parcial: cada seção distingue o
 > desenho-alvo do que já existe, sem tratar estruturas reservadas como recursos
 > implementados.
+>
+> **Diagrama único com todos os componentes:** [`diagrama-completo.md`](diagrama-completo.md).
 
 ## 1. Visão geral
 
