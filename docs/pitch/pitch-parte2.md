@@ -130,7 +130,7 @@ aplicadas). No `mobilizacoes-service`, que publica eventos, o `/ready` exige tam
 
 ---
 
-## 2.2 Estratégia de versionamento 
+## 2.2 Estratégia de versionamento
 
 **Decisão arquitetural: versão no caminho (URI), aplicada na borda: `/api/v1/mobile/...`, `/api/v1/web/...`.**
 
@@ -277,7 +277,7 @@ os dados crus de `vagas`/`totalInteressados` para montar seus próprios gráfico
 
 ---
 
-## 5.0 Database per service 
+## 5.0 Database per service
 
 Quatro instâncias **PostgreSQL 16**, cada uma com credencial própria e inalcançável por qualquer outro
 componente (rede `data-<serviço>` / `NetworkPolicy`). As migrations rodam no boot com `pg_advisory_lock`.
@@ -337,7 +337,7 @@ de `mobilizacao.criada` (registro em `eventos_processados` + `UPDATE` na mesma t
 
 ---
 
-## 5.3 Padrão Transactional Outbox — fluxo `mobilizacao.criada` 
+## 5.3 Padrão Transactional Outbox — fluxo `mobilizacao.criada`
 
 A tabela `outbox` **já existe em todos os bancos** e a interface `OutboxRelay` está em
 `services/mobilizacoes-service/src/outbox/relay.ts`.
