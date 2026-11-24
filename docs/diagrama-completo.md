@@ -6,6 +6,10 @@ consumidor idempotente, modelo de leitura do CQRS), bancos, broker, filas e os r
 que sustentam cada peça (Ingress, Services, Deployments, StatefulSets/PVCs, ConfigMaps, Secrets, HPA e
 NetworkPolicies).
 
+![Diagrama completo da arquitetura](../imagens/diagrama-completo.png)
+
+Versão em imagem, mais compacta, em [`imagens/diagrama-completo.png`](../imagens/diagrama-completo.png) e em vetor (zoom sem perder nitidez) em [`imagens/diagrama-completo.svg`](../imagens/diagrama-completo.svg); o código-fonte dela fica em [`imagens/diagrama-completo.mmd`](../imagens/diagrama-completo.mmd).
+
 **Como ler:**
 
 | Traço | Significado |

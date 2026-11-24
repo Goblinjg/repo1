@@ -1,0 +1,125 @@
+flowchart TB
+    subgraph CLI["Clientes"]
+        direction LR
+        APP["📱 App mobile"]
+        WEB["🖥️ Aplicação web<br/>(doadores e admins)"]
+    end
+
+    subgraph K8S["Cluster Kubernetes (kind) · namespace 4life · NetworkPolicy default-deny-ingress"]
+        direction TB
+
+        subgraph EDGE["Borda"]
+            direction LR
+            ING["Ingress 4life · host 4life.test<br/>/api · /auth · /health"]
+            GWSVC["Service gateway<br/>:8080"]
+            GW["API Gateway · 2 réplicas<br/>valida JWT · roteia /api/mobile e /api/web<br/>esconde /auth interno · sanitiza (..)<br/>rate limiting 📐"]
+        end
+
+        subgraph BFFS["Camada BFF (sem banco)"]
+            direction LR
+            BM["bff-mobile · :4001 · HPA 2→5<br/>GET /inicio agrega 3 serviços<br/>degrada com null + aviso"]
+            BW["bff-web · :4002 · 2 réplicas<br/>POST /auth/login · GET /painel<br/>valida admin antes de criar mobilização"]
+        end
+
+        subgraph DOM["Serviços de domínio (database per service)"]
+            direction LR
+
+            subgraph DOA["doadores-service · :3001 · 2 réplicas"]
+                direction TB
+                DOA_R["Rotas /doadores<br/>/auth/verificar"]
+                DOA_S["Hash de senha (scrypt)"]
+            end
+
+            subgraph COM["comunidades-service · :3002 · 2 réplicas"]
+                direction TB
+                COM_R["Rotas /comunidades<br/>/membros"]
+                COM_W["Modelo de ESCRITA<br/>(normalizado)"]
+                COM_C["Consumidor idempotente<br/>ack manual + eventos_processados"]
+                COM_P["Projeção do painel 📐"]
+                COM_Q["Leitura CQRS<br/>ConsultaPainel 📐"]
+                COM_SP["Participante SAGA<br/>T2 reservar-data / C2 📐"]
+            end
+
+            subgraph MOB["mobilizacoes-service · :3003 · 1→3 réplicas"]
+                direction TB
+                MOB_R["Rotas /mobilizacoes<br/>/interesses (FOR UPDATE)"]
+                ORQ["🎯 Orquestrador da SAGA<br/>T1 PENDENTE · T4 confirma<br/>C3→C1 em ordem reversa 📐"]
+                MOB_PUB["Publicador de eventos<br/>(após commit)"]
+                OUTBOX[("tabela outbox")]
+                RELAY["Outbox relay<br/>SKIP LOCKED + confirm 📐"]
+            end
+
+            subgraph INF["informacoes-service · :3004 · 2 réplicas"]
+                direction TB
+                INF_R["Rotas /conteudos /dicas<br/>/faq /hemocentros"]
+                INF_SP["Participante SAGA<br/>T3 reservar-janela (pivô) / C3 📐"]
+            end
+        end
+
+        subgraph BUS["RabbitMQ · StatefulSet + PVC 1Gi · :5672"]
+            direction LR
+            EX{{"Exchange topic<br/>4life.events"}}
+            Q1[["fila comunidades.<br/>mobilizacao-criada"]]
+            Q2[["filas saga.* reservar-data /<br/>reservar-janela + respostas 📐"]]
+        end
+
+        subgraph DATA["PostgreSQL 16 · um StatefulSet + PVC 1Gi por serviço"]
+            direction LR
+            DOA_DB[("doadores-db")]
+            COM_DB[("comunidades-db<br/>+ eventos_processados<br/>+ reservas_calendario 📐")]
+            MOB_DB[("mobilizacoes-db<br/>+ estado da saga 📐")]
+            INF_DB[("informacoes-db<br/>+ reservas_hemocentro 📐")]
+        end
+
+        LEG["<b>Legenda</b><br/>── HTTP síncrono · ┄┄ RabbitMQ assíncrono · ━━ SQL<br/>verde = implementado · amarelo tracejado 📐 = Parte 4<br/>cinza = infraestrutura Kubernetes"]
+        CFG["⚙️ ConfigMaps (URLs, portas, LOG_LEVEL) e Secrets (*-db-credentials, rabbitmq-credentials, gateway-jwt)<br/>montados em todos os Deployments e StatefulSets"]
+    end
+
+    %% síncrono
+    APP --> ING
+    WEB --> ING
+    ING --> GWSVC --> GW
+    GW -->|/api/mobile| BM
+    GW -->|/api/web · /auth/login| BW
+    BM --> DOA & COM & MOB & INF
+    BW --> DOA & COM & MOB & INF
+
+    %% interno
+    DOA_R --> DOA_S
+    COM_R --> COM_W
+    COM_C --> COM_P --> COM_Q
+    MOB_R --> ORQ
+    MOB_R --> MOB_PUB
+    ORQ --> OUTBOX
+    MOB_PUB -->|fallback| OUTBOX
+    OUTBOX --> RELAY
+
+    %% bancos: cada serviço só acessa o próprio
+    DOA ==> DOA_DB
+    COM ==> COM_DB
+    MOB ==> MOB_DB
+    INF ==> INF_DB
+
+    %% assíncrono
+    MOB_PUB -.->|mobilizacao.criada| EX
+    RELAY -.->|eventos e comandos| EX
+    EX -.-> Q1
+    EX -.-> Q2
+    Q1 ~~~ DOA_DB
+    Q2 ~~~ MOB_DB
+    COM_C <-.->|consome| Q1
+    COM_SP <-.->|reservar-data / resposta| Q2
+    INF_SP <-.->|reservar-janela / resposta| Q2
+    ORQ <-.->|respostas| Q2
+
+    classDef impl fill:#e6f4ea,stroke:#2e7d32,color:#1b1b1b
+    classDef alvo fill:#fff8e1,stroke:#f9a825,stroke-dasharray:5 4,color:#1b1b1b
+    classDef infra fill:#eceff1,stroke:#546e7a,color:#1b1b1b
+    classDef orq fill:#fff3cd,stroke:#d84315,stroke-width:3px,stroke-dasharray:5 4,color:#1b1b1b
+
+    class APP,WEB,GW,BM,BW,DOA_R,DOA_S,COM_R,COM_W,COM_C,MOB_R,MOB_PUB,OUTBOX,INF_R,EX,Q1,DOA_DB,COM_DB,MOB_DB,INF_DB impl
+    class COM_P,COM_Q,COM_SP,RELAY,INF_SP,Q2 alvo
+    class ORQ orq
+    class ING,GWSVC,CFG infra
+    classDef leg fill:#ffffff,stroke:#546e7a,color:#1b1b1b,text-align:left
+    class LEG leg
