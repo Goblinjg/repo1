@@ -31,10 +31,15 @@ paths:
         - { name: cidade, in: query, schema: { type: string } }
         - { name: interessado, in: query, description: Mobilizações em que o doador registrou interesse, schema: { type: string, format: uuid } }
         - { name: futuras, in: query, description: Apenas com dataHora >= agora, schema: { type: boolean, default: false } }
+        - { name: estado, in: query, description: Filtra pelo estado (PENDENTE fica de fora por padrão), schema: { type: string, enum: [PENDENTE, CONFIRMADA, CANCELADA, TODAS], default: CONFIRMADA } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Mobilizacao' } } } } }
     post:
-      summary: Cria mobilização e publica `mobilizacao.criada`
+      summary: Inicia a SAGA de criação (T1)
+      description: |
+        Grava a mobilização `PENDENTE`, a saga e o comando `saga.comunidades.reservar-data` (na outbox)
+        numa única transação e responde 202. Ao final da saga a mobilização fica `CONFIRMADA`
+        (T4, publica `mobilizacao.criada`) ou `CANCELADA` (C1, publica `mobilizacao.cancelada`).
       parameters: [ { name: x-user-id, in: header, required: true, schema: { type: string, format: uuid } } ]
       requestBody:
         required: true
@@ -54,7 +59,18 @@ paths:
                 local: { type: string }
                 vagas: { type: integer, minimum: 1, nullable: true }
       responses:
-        '201': { description: Criada, content: { application/json: { schema: { $ref: '#/components/schemas/Mobilizacao' } } } }
+        '202':
+          description: Saga iniciada
+          headers: { Location: { schema: { type: string }, description: "/mobilizacoes/{id}" } }
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Mobilizacao'
+                  - type: object
+                    properties:
+                      sagaId: { type: string, format: uuid }
+                      _links: { type: object, properties: { self: { type: string }, saga: { type: string } } }
         '400': { description: Dados inválidos }
   /mobilizacoes/{id}:
     parameters: [ { $ref: '#/components/parameters/Id' } ]
@@ -63,6 +79,13 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Mobilizacao' } } } }
         '404': { description: Não encontrada }
+  /mobilizacoes/{id}/saga:
+    parameters: [ { $ref: '#/components/parameters/Id' } ]
+    get:
+      summary: Estado e linha do tempo da SAGA da mobilização
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Saga' } } } }
+        '404': { description: Sem saga para esta mobilização }
   /mobilizacoes/{id}/interesses:
     parameters: [ { $ref: '#/components/parameters/Id' } ]
     post:
@@ -74,7 +97,7 @@ paths:
         '201': { description: Registrado }
         '404': { description: Mobilização não encontrada }
         '409': { description: Interesse já registrado }
-        '422': { description: Vagas esgotadas }
+        '422': { description: Vagas esgotadas ou mobilização não CONFIRMADA }
   /mobilizacoes/{id}/interesses/{doadorId}:
     parameters:
       - { $ref: '#/components/parameters/Id' }
@@ -100,6 +123,21 @@ components:
         local: { type: string, nullable: true }
         vagas: { type: integer, nullable: true }
         totalInteressados: { type: integer }
-        estado: { type: string, enum: [PENDENTE, CONFIRMADA, CANCELADA], description: Estado do fluxo de criação no contrato-alvo }
+        estado: { type: string, enum: [PENDENTE, CONFIRMADA, CANCELADA], description: Resultado da SAGA de criação }
+        motivoCancelamento: { type: string, nullable: true }
         criadorId: { type: string, format: uuid }
         criadoEm: { type: string, format: date-time }
+    Saga:
+      type: object
+      properties:
+        sagaId: { type: string, format: uuid }
+        mobilizacaoId: { type: string, format: uuid }
+        estado: { type: string, enum: [INICIADA, EM_ANDAMENTO, CONCLUIDA, COMPENSANDO, COMPENSADA, FALHOU] }
+        passo: { type: string, enum: [data, janela, fim] }
+        concluidos: { type: array, items: { type: string } }
+        compensacoesPendentes: { type: array, items: { type: string } }
+        motivo: { type: string, nullable: true }
+        prazoEm: { type: string, format: date-time, nullable: true }
+        historico:
+          type: array
+          items: { type: object, properties: { em: { type: string, format: date-time }, etapa: { type: string }, descricao: { type: string } } }

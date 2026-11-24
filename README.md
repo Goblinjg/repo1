@@ -198,11 +198,20 @@ O projeto é desenvolvido por uma equipe composta por quatro integrantes:
 
 ## Status do projeto
 
-🛠️ **Protótipo parcial e arquitetura documentada**
+🚀 **Sistema distribuído funcional (Parte 4)**
 
-O repositório contém protótipos de serviços, gateway, BFFs e infraestrutura de
-execução, além da documentação arquitetural da Parte 2. Nem todos os fluxos do
-desenho-alvo estão implementados: versionamento URI `/api/v1`, HATEOAS,
-rate limiting, Transactional Outbox com relay, SAGA e CQRS permanecem decisões
-documentadas ou estruturas parciais. O estado de cada capacidade e suas
-diferenças em relação ao protótipo estão em [`docs/arquitetura.md`](docs/arquitetura.md).
+O 4Life roda ponta a ponta em Docker Compose e em Kubernetes (kind): gateway, dois BFFs, quatro
+serviços com banco próprio, RabbitMQ com **Transactional Outbox**, **SAGA orquestrada** com
+compensações, **CQRS** no painel da comunidade e um **assistente com RAG** (LangChain + Ollama local +
+pgvector) tratado como dependência falível (circuit breaker, timeout/retry, cache e fallback).
+
+| Para… | Veja |
+|---|---|
+| Subir e demonstrar ao vivo | [`docs/parte4.md`](docs/parte4.md) e `./scripts/demo-parte4.sh` |
+| Arquitetura e estado de cada capacidade | [`docs/arquitetura.md`](docs/arquitetura.md) |
+| Assistente (RAG, LangChain, resiliência) | [`docs/llm/README.md`](docs/llm/README.md) |
+| Avaliação do RAG com e sem recuperação | [`docs/llm/avaliacao-rag.md`](docs/llm/avaliacao-rag.md) |
+| Diagrama com todos os componentes | [`docs/diagrama-completo.md`](docs/diagrama-completo.md) |
+
+Ainda planejados (fora do escopo da Parte 4): versionamento `/api/v1` na borda, HATEOAS completo e
+rate limiting no gateway.

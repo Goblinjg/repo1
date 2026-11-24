@@ -1,0 +1,357 @@
+{
+  "geradoEm": "2026-11-24T21:56:50Z",
+  "resultados": [
+    {
+      "id": 1,
+      "pergunta": "Fiz uma tatuagem, quanto tempo preciso esperar para doar sangue?",
+      "esperado": "12 meses após a tatuagem",
+      "usarRag": true,
+      "resposta": "12 meses após fazer a tatuagem.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 7215,
+      "fontes": [
+        {
+          "titulo": "Quem tem tatuagem pode doar?",
+          "fonte": "faq",
+          "similaridade": 0.699
+        },
+        {
+          "titulo": "Impedimentos temporários",
+          "fonte": "conhecimento/03-impedimentos-temporarios.md",
+          "similaridade": 0.673
+        },
+        {
+          "titulo": "Mitos e verdades",
+          "fonte": "conhecimento/08-mitos.md",
+          "similaridade": 0.649
+        }
+      ]
+    },
+    {
+      "id": 1,
+      "pergunta": "Fiz uma tatuagem, quanto tempo preciso esperar para doar sangue?",
+      "esperado": "12 meses após a tatuagem",
+      "usarRag": false,
+      "resposta": "Para fazer a tatuagem e doar sangue, é recomendável esperar 2-3 semanas após o procedimento.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 6182,
+      "fontes": []
+    },
+    {
+      "id": 2,
+      "pergunta": "Qual o intervalo mínimo entre doações para mulheres?",
+      "esperado": "90 dias (3 meses), no máximo 3 doações em 12 meses",
+      "usarRag": true,
+      "resposta": "O intervalo mínimo entre doações para mulheres é de 3 meses, com a possibilidade de 3 doações por mês.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 5486,
+      "fontes": [
+        {
+          "titulo": "Intervalo entre doações",
+          "fonte": "conhecimento/02-intervalo-entre-doacoes.md",
+          "similaridade": 0.726
+        },
+        {
+          "titulo": "Com que frequência posso doar?",
+          "fonte": "faq",
+          "similaridade": 0.698
+        },
+        {
+          "titulo": "Intervalo entre doações",
+          "fonte": "conhecimento/02-intervalo-entre-doacoes.md",
+          "similaridade": 0.624
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "pergunta": "Qual o intervalo mínimo entre doações para mulheres?",
+      "esperado": "90 dias (3 meses), no máximo 3 doações em 12 meses",
+      "usarRag": false,
+      "resposta": "O intervalo mínimo entre doações para mulheres é de 3 dias, desde a data da consulta até a próxima doação.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 3696,
+      "fontes": []
+    },
+    {
+      "id": 3,
+      "pergunta": "Quem pode criar uma mobilização no 4Life?",
+      "esperado": "somente administradores da comunidade (quem cria a comunidade vira administrador)",
+      "usarRag": true,
+      "resposta": "Somente administradores da comunidade podem criar mobilizações.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 5020,
+      "fontes": [
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.732
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.628
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.621
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "pergunta": "Quem pode criar uma mobilização no 4Life?",
+      "esperado": "somente administradores da comunidade (quem cria a comunidade vira administrador)",
+      "usarRag": false,
+      "resposta": "Pode criar uma mobilização no 4Life se a organização estiver alinhada com os valores e objetivos do sistema.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 4570,
+      "fontes": []
+    },
+    {
+      "id": 4,
+      "pergunta": "No 4Life, o que acontece com a mobilização se o hemocentro não tiver capacidade no dia?",
+      "esperado": "a reserva é recusada, o que foi reservado é desfeito e a mobilização fica CANCELADA com o motivo",
+      "usarRag": true,
+      "resposta": "O hemocentro sem capacidade na data escolhida cancela a mobilização e passa de \"hemocentro sem capacidade\" para \"não disponível\". O motivo é fornecido.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 7382,
+      "fontes": [
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.787
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.68
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.668
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "pergunta": "No 4Life, o que acontece com a mobilização se o hemocentro não tiver capacidade no dia?",
+      "esperado": "a reserva é recusada, o que foi reservado é desfeito e a mobilização fica CANCELADA com o motivo",
+      "usarRag": false,
+      "resposta": "Se o hemocentro estiver sem capacidade em um determinado dia, as doações de sangue podem ser suspensas ou canceladas.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 3793,
+      "fontes": []
+    },
+    {
+      "id": 5,
+      "pergunta": "Uma comunidade do 4Life pode ter duas mobilizações no mesmo dia?",
+      "esperado": "não: no máximo uma mobilização por dia por comunidade",
+      "usarRag": true,
+      "resposta": "Sim, uma comunidade do 4Life pode ter duas mobilizações no mesmo dia.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": true,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 5195,
+      "fontes": [
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.796
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.692
+        },
+        {
+          "titulo": "4Life: como funcionam as mobilizações",
+          "fonte": "conhecimento/09-4life-mobilizacoes.md",
+          "similaridade": 0.607
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "pergunta": "Uma comunidade do 4Life pode ter duas mobilizações no mesmo dia?",
+      "esperado": "não: no máximo uma mobilização por dia por comunidade",
+      "usarRag": false,
+      "resposta": "Sim, uma comunidade do 4Life pode ter dois ou mais mobilizações em um dia.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": true,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 3160,
+      "fontes": []
+    },
+    {
+      "id": 6,
+      "pergunta": "Preciso estar em jejum para doar sangue?",
+      "esperado": "não; fazer refeição leve e evitar gordura nas 3 horas anteriores",
+      "usarRag": true,
+      "resposta": "Não. Pelo contrário: alimente-se de forma leve antes de doar.",
+      "fatosEncontrados": 2,
+      "fatosEsperados": 2,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 4324,
+      "fontes": [
+        {
+          "titulo": "Preciso estar em jejum?",
+          "fonte": "faq",
+          "similaridade": 0.68
+        },
+        {
+          "titulo": "Requisitos básicos para doar sangue",
+          "fonte": "conhecimento/01-requisitos-basicos.md",
+          "similaridade": 0.677
+        },
+        {
+          "titulo": "Requisitos básicos para doar sangue",
+          "fonte": "conhecimento/01-requisitos-basicos.md",
+          "similaridade": 0.601
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "pergunta": "Preciso estar em jejum para doar sangue?",
+      "esperado": "não; fazer refeição leve e evitar gordura nas 3 horas anteriores",
+      "usarRag": false,
+      "resposta": "Sim, é recomendável que você esteja em jejum antes de realizar uma doação de sangue.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 2,
+      "contradiz": true,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 2620,
+      "fontes": []
+    },
+    {
+      "id": 7,
+      "pergunta": "Depois de uma gripe, quanto tempo devo esperar para doar?",
+      "esperado": "7 dias após o fim dos sintomas",
+      "usarRag": true,
+      "resposta": "7 dias após o fim dos sintomas.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 3738,
+      "fontes": [
+        {
+          "titulo": "Impedimentos temporários",
+          "fonte": "conhecimento/03-impedimentos-temporarios.md",
+          "similaridade": 0.652
+        },
+        {
+          "titulo": "Impedimentos temporários",
+          "fonte": "conhecimento/03-impedimentos-temporarios.md",
+          "similaridade": 0.63
+        },
+        {
+          "titulo": "Cuidados depois da doação",
+          "fonte": "conhecimento/06-cuidados-depois.md",
+          "similaridade": 0.603
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "pergunta": "Depois de uma gripe, quanto tempo devo esperar para doar?",
+      "esperado": "7 dias após o fim dos sintomas",
+      "usarRag": false,
+      "resposta": "Devido à gravidade da doença e a importância do sangue em grupo, é recomendado que você espera até 10 dias após o início da gripe antes de fazer sua dona.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 2219,
+      "fontes": []
+    },
+    {
+      "id": 8,
+      "pergunta": "Qual tipo sanguíneo é considerado doador universal?",
+      "esperado": "O negativo (O-)",
+      "usarRag": true,
+      "resposta": "Odo negativo.",
+      "fatosEncontrados": 1,
+      "fatosEsperados": 1,
+      "contradiz": false,
+      "correta": true,
+      "origem": "llm",
+      "duracaoMs": 6446,
+      "fontes": [
+        {
+          "titulo": "Tipos sanguíneos e compatibilidade",
+          "fonte": "conhecimento/07-tipos-sanguineos.md",
+          "similaridade": 0.684
+        },
+        {
+          "titulo": "Tipos sanguíneos e compatibilidade",
+          "fonte": "conhecimento/07-tipos-sanguineos.md",
+          "similaridade": 0.646
+        },
+        {
+          "titulo": "Tipos sanguíneos e compatibilidade",
+          "fonte": "conhecimento/07-tipos-sanguineos.md",
+          "similaridade": 0.619
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "pergunta": "Qual tipo sanguíneo é considerado doador universal?",
+      "esperado": "O negativo (O-)",
+      "usarRag": false,
+      "resposta": "O sanguíneo doador universal é o A.",
+      "fatosEncontrados": 0,
+      "fatosEsperados": 1,
+      "contradiz": true,
+      "correta": false,
+      "origem": "llm",
+      "duracaoMs": 4066,
+      "fontes": []
+    }
+  ]
+}

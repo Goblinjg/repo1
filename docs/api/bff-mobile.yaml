@@ -72,10 +72,27 @@ paths:
     post: { summary: Entra na comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '201': { description: OK }, '409': { description: Já é membro } } }
   /comunidades/{id}/sair:
     delete: { summary: Sai da comunidade, parameters: [ { $ref: '#/components/parameters/Id' } ], responses: { '204': { description: Removido }, '404': { description: Não é membro } } }
-  /info/faq: { get: { summary: FAQ (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: object, required: [id, pergunta, resposta, categoria], properties: { id: { type: string }, pergunta: { type: string }, resposta: { type: string }, categoria: { type: string } } } } } } } } }
-  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } }
-  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } }
-  /info/conteudos/{slug}: { get: { summary: Conteúdo (público), parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/Conteudo' } } } }, '404': { description: Não encontrado } } }
+  /info/faq: { get: { summary: FAQ (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: object, required: [id, pergunta, resposta, categoria], properties: { id: { type: string }, pergunta: { type: string }, resposta: { type: string }, categoria: { type: string } } } } } } } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } } }
+  /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } } }
+  /info/conteudos/{slug}: { get: { summary: Conteúdo (público), parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ], responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/Conteudo' } } } }, '404': { description: Não encontrado } } } }
+  /assistente/perguntar:
+    post:
+      summary: Assistente de dúvidas (RAG + LLM), resposta enxuta para o app
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pergunta], properties: { pergunta: { type: string }, usarRag: { type: boolean }, usarCache: { type: boolean } } } } } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  resposta: { type: string }
+                  origem: { type: string, enum: [llm, cache, cache-semantico, fallback] }
+                  fontes: { type: array, items: { type: string }, description: Títulos dos trechos usados }
+                  aviso: { type: string, nullable: true }
+  /info/assistente/status: { get: { summary: Estado do assistente (público), responses: { '200': { description: OK } } } }
   /diagnostico/whoami:
     get:
       summary: Cadeia de réplicas que atendeu a requisição (demonstração de escala)

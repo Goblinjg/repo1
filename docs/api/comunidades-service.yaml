@@ -63,6 +63,18 @@ paths:
         '201': { description: Adicionado, content: { application/json: { schema: { $ref: '#/components/schemas/Membro' } } } }
         '404': { description: Comunidade não encontrada }
         '409': { description: Já é membro }
+  /comunidades/{id}/painel:
+    get:
+      summary: Painel da comunidade (modelo de leitura do CQRS)
+      description: Documento desnormalizado mantido por eventos; eventualmente consistente (defasagem típica < 1 s).
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/PainelComunidade' } } } }
+        '404': { description: Ainda não projetado }
+  /comunidades/painel/reconstruir:
+    post:
+      summary: Reconstrói toda a projeção a partir do modelo de escrita (operação interna)
+      responses: { '200': { description: OK, content: { application/json: { schema: { type: object, properties: { reconstruidas: { type: integer } } } } } } }
   /comunidades/{id}/membros/{doadorId}:
     parameters:
       - { $ref: '#/components/parameters/Id' }
@@ -93,3 +105,17 @@ components:
         doadorId: { type: string, format: uuid }
         papel: { type: string, enum: [admin, membro] }
         entrouEm: { type: string, format: date-time }
+    PainelComunidade:
+      type: object
+      properties:
+        comunidadeId: { type: string, format: uuid }
+        nome: { type: string }
+        descricao: { type: string, nullable: true }
+        cidade: { type: string }
+        uf: { type: string }
+        totalMembros: { type: integer }
+        membros: { type: array, items: { type: object, properties: { doadorId: { type: string, format: uuid }, nome: { type: string, nullable: true }, papel: { type: string, enum: [admin, membro] } } } }
+        totalMobilizacoes: { type: integer }
+        proximasMobilizacoes: { type: array, items: { type: object, properties: { id: { type: string, format: uuid }, titulo: { type: string }, dataHora: { type: string, format: date-time } } } }
+        versao: { type: integer }
+        atualizadoEm: { type: string, format: date-time }

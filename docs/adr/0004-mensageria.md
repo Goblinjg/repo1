@@ -7,19 +7,26 @@ Algumas reações entre domínios não precisam ser síncronas. Exemplo: atualiz
 contador de mobilizações da comunidade.
 
 ## Decisão
-- RabbitMQ com exchange *topic* `4life.events`.
+- RabbitMQ com exchange *topic* `4life.events`; a routing key é o tipo da mensagem.
 - Uma fila durável por consumidor e mensagens persistentes.
-- Ack manual e consumidor idempotente (tabela `eventos_processados`).
-- **Protótipo atual:** o evento é publicado após o commit. Se a publicação falha,
-  o código tenta inserir uma linha na outbox como fallback. Essa escrita é
-  posterior e separada da transação de domínio; portanto não é Transactional
-  Outbox e ainda pode perder evento se o processo cair entre as escritas.
-- **Desenho-alvo:** inserir o evento na outbox na mesma transação local da
-  alteração de domínio e usar um relay com publisher confirm para publicá-lo.
-  A tabela `outbox` já existe em todos os bancos, mas o relay ainda não está
-  implementado.
+- Ack manual e consumidor idempotente (`eventos_processados (evento_id, consumidor)`).
+- **Transactional Outbox (implementado na Parte 4):** o evento (ou comando da SAGA) é
+  gravado na tabela `outbox` na mesma transação local da alteração de domínio. Um
+  relay por serviço publica as pendências com `FOR UPDATE SKIP LOCKED`, espera o
+  publisher confirm, marca `publicado_em` e, em falha, re-tenta com backoff.
+- Todo serviço declara a topologia completa (filas e bindings) ao conectar.
+- Além de eventos de integração, o broker transporta os **comandos e respostas da
+  SAGA** orquestrada (`saga.*`).
+
+> Histórico: até a Parte 3, o evento era publicado após o commit, com uma
+> gravação de fallback na outbox **separada** da transação de domínio (não
+> atômica). Isso foi substituído pelo outbox transacional.
 
 ## Consequências
-- No protótipo existe uma janela em que o commit ocorre e a publicação falha; o
-  fallback reduz alguns casos, mas não fecha a janela porque não é atômico. O
-  desenho-alvo de outbox transacional elimina o dual write entre banco e broker.
+- Não há mais dual write entre banco e broker: se o processo cair depois do
+  commit, a mensagem continua na outbox e o relay a publica depois.
+- A entrega é *at-least-once*; o consumidor idempotente garante efeito único.
+- O broker deixou de ser requisito de prontidão dos publicadores: sem ele, as
+  mensagens acumulam na outbox.
+- Custo: latência extra de até um ciclo do relay (500 ms) e uma tabela a mais
+  para limpar (mensagens publicadas há mais de 7 dias são apagadas).

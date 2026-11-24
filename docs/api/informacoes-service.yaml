@@ -57,6 +57,30 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Hemocentro' } } } }
         '404': { description: Não encontrado }
+  /assistente/perguntar:
+    post:
+      summary: Pergunta ao assistente (RAG + tools + LLM local)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pergunta]
+              properties:
+                pergunta: { type: string, minLength: 3, maxLength: 500 }
+                usarRag: { type: boolean, default: true, description: false = sem recuperação (linha de base da avaliação) }
+                usarCache: { type: boolean, default: true }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/RespostaAssistente' } } } }
+  /assistente/status:
+    get:
+      summary: Estado da ingestão, dos circuit breakers e do cache
+      responses: { '200': { description: OK } }
+  /assistente/ingestao:
+    post:
+      summary: Refaz a ingestão da base de conhecimento (operação interna)
+      responses: { '200': { description: OK } }
 components:
   schemas:
     Categoria: { type: string, enum: [requisitos, preparo, documentos, mitos, dica] }
@@ -78,3 +102,16 @@ components:
         endereco: { type: string }
         telefone: { type: string, nullable: true }
         horarios: { type: string, nullable: true }
+        capacidadeDiaria: { type: integer, description: Mobilizações que o hemocentro atende por dia (usado no T3 da SAGA) }
+    RespostaAssistente:
+      type: object
+      properties:
+        pergunta: { type: string }
+        resposta: { type: string }
+        origem: { type: string, enum: [llm, cache, cache-semantico, fallback] }
+        usouRag: { type: boolean }
+        fontes: { type: array, items: { type: object, properties: { titulo: { type: string }, fonte: { type: string }, similaridade: { type: number } } } }
+        ferramentas: { type: array, items: { type: object, properties: { nome: { type: string }, argumentos: { type: object }, resultado: { type: string } } } }
+        modelo: { type: string }
+        duracaoMs: { type: integer }
+        aviso: { type: string, description: Motivo do fallback, quando houver }

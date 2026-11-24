@@ -32,17 +32,20 @@
                            │        │
                         ┌──┴────────▼──┐
                         │   RabbitMQ   │  exchange topic `4life.events`
-                        └──────────────┘
+                        └──────────────┘  (eventos via outbox + comandos/respostas da SAGA)
 ```
+
+Além disso, o `informacoes-service` usa um **LLM local (Ollama)** no assistente com RAG,
+e o `informacoes-db` tem a extensão **pgvector** (§9).
 
 ## 2. Decomposição em serviços
 
 | Serviço | Responsabilidade | Dados próprios | Porta |
 |---|---|---|---|
-| **doadores-service** | Cadastro e perfil de doadores; verificação de credenciais | `doadores` | 3001 |
-| **comunidades-service** | Comunidades, membros e papéis (admin/membro); contador de mobilizações | `comunidades`, `membros`, `eventos_processados` | 3002 |
-| **mobilizacoes-service** | Mobilizações (eventos de doação) e interesses dos usuários | `mobilizacoes`, `interesses` | 3003 |
-| **informacoes-service** | Conteúdos educativos, FAQ e hemocentros (orientativo) | `conteudos`, `faq`, `hemocentros` | 3004 |
+| **doadores-service** | Cadastro e perfil de doadores; verificação de credenciais; publica `doador.*` | `doadores`, `outbox` | 3001 |
+| **comunidades-service** | Comunidades, membros e papéis; participante da SAGA (T2/C2); **CQRS** do painel | `comunidades`, `membros`, `reservas_calendario`, `painel_comunidade` (+ réplicas `doadores_nomes`, `mobilizacoes_resumo`), `eventos_processados`, `outbox` | 3002 |
+| **mobilizacoes-service** | Mobilizações e interesses; **orquestrador da SAGA** | `mobilizacoes`, `interesses`, `sagas`, `saga_historico`, `eventos_processados`, `outbox` | 3003 |
+| **informacoes-service** | Conteúdos, FAQ e hemocentros; participante da SAGA (T3/C3); **assistente com RAG** | `conteudos`, `faq`, `hemocentros`, `reservas_hemocentro`, `rag_trechos` (pgvector), `assistente_cache`, `eventos_processados`, `outbox` | 3004 |
 
 Regras:
 - A superfície pública alvo é versionada por URI (`/api/v1/mobile` e
@@ -55,9 +58,9 @@ Regras:
   `mobilizacoes.comunidade_id`), sem chave estrangeira entre bancos.
 - Todos os serviços expõem `GET /health` (liveness: processo vivo) e
   `GET /ready` (readiness: banco respondendo).
-- Todos os bancos possuem uma tabela `outbox`, mas a tabela por si só não
-  implementa o padrão Transactional Outbox. O fluxo transacional descrito em
-  §7 é o desenho-alvo; o relay e a gravação atômica ainda estão pendentes.
+- Todo serviço que publica mensagens usa **Transactional Outbox**: o evento é
+  gravado na tabela `outbox` na mesma transação da mudança de domínio, e um
+  relay publica no RabbitMQ (§7).
 
 ## 3. API Gateway
 
@@ -89,7 +92,7 @@ com período de convivência compatível com a atualização dos apps móveis.
 | BFF | Cliente | Exemplos de agregação |
 |---|---|---|
 | **bff-mobile** | app mobile (telas curtas, poucos campos) | `GET /inicio` = próximas mobilizações + minhas comunidades + dica do dia |
-| **bff-web** | aplicação web (painéis, administração de comunidades) | `GET /painel`, `GET /comunidades/{id}` = comunidade + membros + mobilizações; criação de mobilização valida se o usuário é admin da comunidade |
+| **bff-web** | aplicação web (painéis, administração de comunidades) | `GET /painel`; `GET /comunidades/{id}` lê o **modelo de leitura** (CQRS) numa chamada; criação de mobilização valida se o usuário é admin e devolve `202` (SAGA) |
 
 Os BFFs não têm banco. Eles orquestram chamadas HTTP síncronas aos serviços e
 degradam graciosamente (campo `null` + aviso) se um serviço secundário falhar.
@@ -101,83 +104,131 @@ Mobilização com `_links` HATEOAS estão em [`pitch-parte2.md`](pitch/pitch-par
 O HATEOAS e o prefixo `/v1` fazem parte do contrato arquitetural-alvo, ainda não
 do protótipo executável.
 
-## 5. Comunicação assíncrona (eventos)
+## 5. Comunicação assíncrona (eventos e comandos)
 
 Broker: **RabbitMQ**, exchange `4life.events` do tipo *topic*, mensagens JSON
-persistentes (ADR-0004).
+persistentes (ADR-0004). A routing key é o tipo da mensagem.
 
-| Evento | Publicador | Consumidores | Efeito |
+| Mensagem | Publicador | Fila consumidora | Efeito |
 |---|---|---|---|
-| `mobilizacao.criada` | mobilizacoes-service | comunidades-service (fila `comunidades.mobilizacao-criada`) | incrementa `comunidades.total_mobilizacoes` |
-| `mobilizacao.interesse-registrado` | mobilizacoes-service | — (reservado Parte 4) | — |
+| `doador.cadastrado`, `doador.atualizado` | doadores | `comunidades.painel` | réplica de nomes do painel (CQRS) |
+| `comunidade.criada`, `membro.entrou`, `membro.saiu` | comunidades | `comunidades.painel` | remonta o documento do painel |
+| `mobilizacao.criada` | mobilizacoes (T4) | `comunidades.mobilizacao-criada`, `comunidades.painel` | contador `total_mobilizacoes`; próximas mobilizações no painel |
+| `mobilizacao.cancelada` | mobilizacoes (C1) | `comunidades.painel` | tira a mobilização do painel |
+| `mobilizacao.sincronizada` | mobilizacoes (migração) | `comunidades.painel` | carga inicial das mobilizações anteriores ao CQRS |
+| `mobilizacao.interesse-registrado` | mobilizacoes | — (reservado) | — |
+| `saga.comunidades.reservar-data` / `liberar-data` | orquestrador | `saga.comunidades.comandos` | T2 / C2 |
+| `saga.informacoes.reservar-janela` / `liberar-janela` | orquestrador | `saga.informacoes.comandos` | T3 / C3 |
+| `saga.resposta.*` (`data-reservada`, `janela-recusada`, …) | participantes | `saga.mobilizacoes.respostas` | avança ou compensa a saga |
 
-Envelope:
+Envelope (eventos e comandos):
 ```json
 { "id": "uuid", "tipo": "mobilizacao.criada", "ocorridoEm": "ISO-8601",
-  "dados": { "mobilizacaoId": "uuid", "comunidadeId": "uuid", "dataHora": "ISO-8601" } }
+  "dados": { "mobilizacaoId": "uuid", "comunidadeId": "uuid", "titulo": "…", "dataHora": "ISO-8601" } }
 ```
 
-- Consumo com *ack* manual e **idempotente** (tabela `eventos_processados`).
-- A fila e o binding são declarados pelo consumidor **e** pelo publicador
-  (idempotente), para que nenhum evento publicado antes de o consumidor subir
-  seja descartado.
-- O `/ready` do mobilizacoes-service inclui a conexão com o broker.
-- **Protótipo atual:** publica após o commit e, se a publicação falhar, grava
-  uma linha de fallback na outbox. Há risco de perda se o processo cair entre o
-  commit do domínio e a publicação; a gravação de fallback também não é atômica.
-- **Desenho-alvo:** grava a mudança de domínio e o evento na outbox na mesma
-  transação local; um relay publica com confirmação e marca a linha como
-  publicada. O consumidor continua idempotente para tolerar reentregas.
+- Consumo com *ack* manual e **idempotente**: `eventos_processados (evento_id, consumidor)`
+  na mesma transação do efeito; o mesmo evento pode alimentar mais de um consumidor.
+- Todo serviço declara a **topologia completa** (filas e bindings) ao conectar,
+  para que nenhuma mensagem se perca por causa da ordem em que os serviços sobem.
+- Filas da SAGA e do painel usam `prefetch 1`: a ordem da fila é preservada
+  (ex.: `reservar-janela` é sempre processado antes do `liberar-janela` da mesma saga).
+- O broker **não** é mais requisito de prontidão: sem ele, as mensagens ficam na
+  outbox e o relay publica quando a conexão voltar.
 
-## 6. SAGA orquestrada (desenho-alvo)
+## 6. SAGA orquestrada — criar mobilização confirmada
 
-- Uma transação de negócio cria uma mobilização confirmada através de
-  `mobilizacoes-service`, `comunidades-service` e `informacoes-service`.
-- O orquestrador vive em `mobilizacoes-service`, persiste o estado da saga e
-  envia comandos/respostas pelo RabbitMQ. A escolha é orquestração porque há
-  três participantes e compensações ordenadas que precisam ser observáveis num
-  único fluxo.
-- Passos: (T1) cria mobilização `PENDENTE` e saga; (T2) comunidades valida o
-  papel de admin e reserva a data; (T3) informações reserva capacidade do
-  hemocentro; (T4) mobilizações confirma e grava `mobilizacao.criada` na outbox.
-- Compensações: C1 marca a mobilização como `CANCELADA` com motivo; C2 remove a
-  reserva comunitária por `sagaId`; C3 remove a reserva do hemocentro por
-  `sagaId`. São idempotentes e reexecutadas em caso de falha. Depois do passo
-  pivô T3, T4 é retentado até concluir.
-- Caminho feliz, falha por capacidade indisponível, timeout e contratos estão
-  detalhados em [`pitch-parte2.md`](pitch/pitch-parte2.md). O código atual
-  contém somente interfaces de contrato; o orquestrador e os comandos não estão
-  implementados.
+- O orquestrador vive em `mobilizacoes-service` (`src/saga/orquestrador.ts`),
+  persiste o estado em `sagas` e a linha do tempo em `saga_historico`, e conversa
+  com os participantes **só por comandos/respostas no RabbitMQ**, publicados pela
+  outbox na mesma transação que muda o estado da saga. A escolha é orquestração
+  porque há três participantes e compensações que dependem da ordem e precisam
+  ser observáveis num único fluxo.
+- Passos: (T1) cria mobilização `PENDENTE` + saga e responde **202**; (T2)
+  comunidades valida admin **no modelo de escrita** e reserva a data
+  (`reservas_calendario`, no máximo uma por comunidade e dia); (T3) informações reserva uma janela
+  do hemocentro (`reservas_hemocentro`, limitada por `capacidade_diaria`; é o **pivô**); (T4)
+  mobilizações marca `CONFIRMADA` e grava `mobilizacao.criada` na outbox. Sem
+  hemocentro informado, a saga vai de T2 direto para T4.
+- Compensações em ordem reversa: C3 libera a janela, C2 libera a data e C1 marca a
+  mobilização como `CANCELADA` com o motivo. Todas são idempotentes (por `saga_id`).
+- **Timeout:** passo sem resposta em `SAGA_TIMEOUT_MS` (30 s) é tratado como falha.
+  Como o participante pode ter executado sem responder, o passo atual também
+  entra na fila de compensação. Compensações sem confirmação são **reenviadas** a
+  cada prazo; depois de `SAGA_MAX_TENTATIVAS` a saga vai para `FALHOU` (intervenção manual).
+- Respostas que chegam fora de hora (ex.: depois de um timeout) são registradas
+  como ignoradas e não mudam o estado.
+- O monitor de prazos usa `FOR UPDATE SKIP LOCKED`, então várias réplicas do
+  mobilizacoes-service podem rodar sem tratar a mesma saga duas vezes.
+- Acompanhamento: `GET /api/web/mobilizacoes/{id}/saga` devolve o estado e o histórico.
 
-## 7. Transactional Outbox (desenho-alvo)
+Cenários verificados (roteiro em `scripts/demo-parte4.sh`):
 
-No fluxo `mobilizacao.criada`, o serviço grava mobilização e evento na tabela
-`outbox` **na mesma transação PostgreSQL**. Um relay seleciona pendências com
-`FOR UPDATE SKIP LOCKED`, publica mensagem persistente no RabbitMQ, aguarda
-publisher confirm e marca a linha como publicada. A entrega é *at-least-once*;
-`eventos_processados` faz o consumidor idempotente. Assim, não há dual write
-entre a transação de negócio e a intenção de publicar. O protótipo atual ainda
-usa publicação direta com fallback não atômico, conforme §5.
+| Cenário | Sequência |
+|---|---|
+| Caminho feliz | T1 → T2 → T3 → T4 → `CONCLUIDA` |
+| Hemocentro sem capacidade | T1 → T2 → T3 recusado → C2 → C1 → `COMPENSADA` |
+| Comunidade já tem mobilização no dia / criador não é admin | T1 → T2 recusado → C1 → `COMPENSADA` |
+| informacoes-service fora do ar | T1 → T2 → timeout em T3 → C3 (espera o serviço voltar) → C2 → C1 → `COMPENSADA` |
 
-## 8. CQRS — painel de comunidades (desenho-alvo)
+## 7. Transactional Outbox
 
-O `comunidades-service` mantém o modelo normalizado de escrita e uma projeção
-desnormalizada de leitura para o painel (comunidade, membros com nome e
-próximas mobilizações). A projeção é atualizada idempotentemente por eventos e
-é reconstruível. A defasagem aceitável é de até 5 segundos; decisões de
-autorização continuam consultando o modelo de escrita. A separação reduz o
-fan-out N+1 do painel web sem colocar autorização em dados eventualmente
-consistentes. Hoje há somente interfaces de contrato em `src/cqrs/`.
+Quem muda o domínio grava a mensagem na tabela `outbox` **na mesma transação
+PostgreSQL** (`gravarNaOutbox`). Um relay em cada serviço publicador
+(`src/outbox/relay.ts`), a cada 500 ms:
 
-## 9. Estado de implementação
+1. seleciona até 50 pendências com `FOR UPDATE SKIP LOCKED` (réplicas não publicam em duplicidade);
+2. publica cada uma como mensagem persistente e espera o **publisher confirm**;
+3. marca `publicado_em`. Em falha, incrementa `tentativas`, grava `ultimo_erro`
+   e agenda `proxima_tentativa_em` com backoff exponencial (até 30 s). O lote
+   para na primeira falha, para preservar a ordem.
+
+Mensagens publicadas há mais de 7 dias são apagadas. A entrega é
+*at-least-once*; o consumidor idempotente garante efeito único. Não existe mais
+*dual write* entre a transação de negócio e a publicação.
+
+## 8. CQRS — painel da comunidade
+
+- **Escrita:** tabelas normalizadas `comunidades` e `membros`. Cada escrita grava
+  `comunidade.criada`, `membro.entrou` ou `membro.saiu` na outbox.
+- **Leitura:** `painel_comunidade (comunidade_id, documento jsonb, versao, atualizado_em)`:
+  comunidade, membros com **nome** e papel, total de mobilizações confirmadas e as
+  próximas mobilizações. É um documento pronto para a tela.
+- **Atualização:** a projeção (`src/cqrs/modelo-leitura.ts`) consome a fila
+  `comunidades.painel`, atualiza as réplicas locais (`doadores_nomes`,
+  `mobilizacoes_resumo`) e remonta o documento de cada comunidade afetada,
+  incrementando a `versao`. É idempotente e **reconstruível**
+  (`POST /comunidades/painel/reconstruir`; no boot, comunidades sem documento ganham um).
+- **Consulta:** `GET /comunidades/{id}/painel` lê só o documento. O bff-web usa
+  essa consulta em `GET /api/web/comunidades/{id}` (`fonte: "modelo-de-leitura"`),
+  trocando o fan-out N+1 anterior (comunidade + membros + uma chamada ao doadores
+  por membro) por **uma chamada**. Se a projeção ainda não existir, ele cai na
+  composição antiga.
+- **Defasagem medida:** ~0,4–0,5 s entre o evento e o documento atualizado
+  (log `projeção do painel atualizada`, campo `defasagemMs`); aceitável até 5 s.
+  Autorização (é admin?) **nunca** usa a projeção.
+
+## 9. Assistente com LLM (RAG)
+
+O `informacoes-service` responde dúvidas do doador com **RAG** sobre uma base de
+conhecimento própria (pgvector no `informacoes-db`), usando **LangChain**
+(chains LCEL + tools que consultam hemocentros e janelas reservadas pela SAGA) e
+um **LLM local** (Ollama, `qwen2.5:0.5b`; embeddings `bge-m3`). O LLM é tratado
+como dependência remota falível: timeout + retry com backoff, circuit breaker,
+cache por chave e semântico, e fallback sem LLM. Detalhes em
+[`docs/llm/README.md`](llm/README.md); avaliação com e sem recuperação em
+[`docs/llm/avaliacao-rag.md`](llm/avaliacao-rag.md); decisão no ADR-0005.
+
+## 10. Estado de implementação
 
 | Capacidade | Estado do protótipo |
 |---|---|
-| Quatro serviços, gateway e dois BFFs | Implementados parcialmente; ver rotas e contratos OpenAPI |
+| Quatro serviços, gateway e dois BFFs | Implementados; ver rotas e contratos OpenAPI |
 | Versão URI `/api/v1` | Decidida para a borda; protótipo ainda usa `/api/{mobile,web}` |
-| HATEOAS para Mobilização | Projetado no contrato arquitetural; não emitido pelo código atual |
+| HATEOAS para Mobilização | `_links` (`self`, `saga`) na resposta 202 da criação; o restante do contrato ainda não é emitido |
 | Rate limiting | Responsabilidade planejada, ainda não implementada |
 | Database per service e consumidor idempotente | Implementados |
-| Transactional Outbox + relay | Desenhado; código atual usa publicação direta e fallback não atômico |
-| SAGA orquestrada de três serviços | Modelada; apenas contratos parciais no código |
-| CQRS do painel | Modelado; apenas interfaces no código |
+| Transactional Outbox + relay | **Implementado** em doadores, comunidades, mobilizacoes e informacoes |
+| SAGA orquestrada de três serviços | **Implementada** (caminho feliz, recusa, timeout e compensações) |
+| CQRS do painel | **Implementado** (projeção por eventos, consulta em 1 chamada) |
+| Assistente com RAG, LangChain e LLM resiliente | **Implementado** (Ollama local, pgvector, 4 mecanismos de resiliência) |

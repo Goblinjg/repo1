@@ -167,6 +167,11 @@ não tem `depends_on`.
   tabela `outbox` sem ser entregue, porque o relay só entra na Parte 4. Com o
   broker na readiness, o pod só recebe tráfego quando consegue publicar.
 
+  **Parte 4:** com o Transactional Outbox + relay, o broker **saiu** da readiness
+  do mobilizacoes-service. Sem broker, a mobilização e os comandos da SAGA ficam
+  na outbox e o relay publica quando a conexão volta; ninguém perde mensagem e o
+  serviço continua atendendo.
+
   Pelo mesmo motivo, **publicador e consumidor declaram a fila e o binding**
   (`comunidades.mobilizacao-criada`), que é uma operação idempotente. Numa
   exchange topic, uma mensagem publicada antes de existir a fila seria descartada.
@@ -263,3 +268,24 @@ Os valores foram medidos com `kubectl top pods`: Node em repouso usa ~1m CPU e
 ~25 Mi. O request baixo permite que tudo caiba no kind de um notebook. O limit
 de memória evita que um vazamento derrube o nó. O request de CPU é a base do
 cálculo do HPA (70% de 50m).
+
+## 12. Parte 4: LLM local (Ollama) e pgvector
+
+- **Ollama** roda em Deployment próprio (1 réplica, estratégia `Recreate` porque o PVC de modelos é
+  `ReadWriteOnce`) com Service ClusterIP `ollama:11434`. Os modelos (`qwen2.5:0.5b` e `bge-m3`,
+  ~1,6 GB) ficam num **PVC de 4 Gi** e são baixados uma vez pelo **Job `ollama-modelos`**, que lê os
+  nomes dos modelos do ConfigMap do informacoes-service. O `k8s-up.sh` espera o Job terminar.
+- Recursos do Ollama: requests de 2 CPUs / 1 Gi, limites de 8 CPUs / 4 Gi (inferência em CPU). Com limite
+  de 4 CPUs, uma resposta com tool levava mais de 12 s e estourava o orçamento do assistente.
+- O Envoy do Ingress (cloud-provider-kind) usa o timeout padrão de **15 s** por requisição. O assistente
+  no cluster tem orçamento de 12 s por pergunta (`ASSISTENTE_ORCAMENTO_MS`): estourou, responde em
+  fallback em vez de a borda devolver 504.
+- **NetworkPolicy `ollama-permite-informacoes`**: só o informacoes-service e o Job alcançam o LLM
+  (equivale à rede `llm` do compose). O egress não é restrito, então o Ollama consegue baixar os modelos.
+- O `informacoes-db` usa a imagem `pgvector/pgvector:pg16` (PostgreSQL 16 + extensão `vector`).
+  Ela é baseada em Debian, com o usuário `postgres` = uid **999**, então o `fsGroup` do StatefulSet
+  mudou de 70 (Alpine) para 999.
+- A readiness do informacoes-service **não** depende do Ollama: sem LLM, o assistente responde em
+  fallback e o resto do serviço segue normal.
+- A imagem oficial do Ollama é grande (~8,5 GB, inclui bibliotecas de GPU). Na primeira subida do
+  cluster, o pull dela pelos nós do kind é a etapa mais demorada.

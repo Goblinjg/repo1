@@ -1,0 +1,87 @@
+[
+  {
+    "id": 1,
+    "pergunta": "Fiz uma tatuagem, quanto tempo preciso esperar para doar sangue?",
+    "fonte": "conhecimento/03-impedimentos-temporarios.md",
+    "esperado": "12 meses após a tatuagem",
+    "fatos": [
+      "12 meses|doze meses|1 ano|um ano"
+    ]
+  },
+  {
+    "id": 2,
+    "pergunta": "Qual o intervalo mínimo entre doações para mulheres?",
+    "fonte": "conhecimento/02-intervalo-entre-doacoes.md",
+    "esperado": "90 dias (3 meses), no máximo 3 doações em 12 meses",
+    "fatos": [
+      "90 dias|3 meses|três meses"
+    ]
+  },
+  {
+    "id": 3,
+    "pergunta": "Quem pode criar uma mobilização no 4Life?",
+    "fonte": "conhecimento/09-4life-mobilizacoes.md",
+    "esperado": "somente administradores da comunidade (quem cria a comunidade vira administrador)",
+    "fatos": [
+      "administrador|admin"
+    ]
+  },
+  {
+    "id": 4,
+    "pergunta": "No 4Life, o que acontece com a mobilização se o hemocentro não tiver capacidade no dia?",
+    "fonte": "conhecimento/09-4life-mobilizacoes.md",
+    "esperado": "a reserva é recusada, o que foi reservado é desfeito e a mobilização fica CANCELADA com o motivo",
+    "fatos": [
+      "mobiliza.{0,40}cancel|cancel.{0,40}mobiliza"
+    ],
+    "proibidos": [
+      "passa para \\**confirmad|fica \\**confirmad|é confirmad"
+    ]
+  },
+  {
+    "id": 5,
+    "pergunta": "Uma comunidade do 4Life pode ter duas mobilizações no mesmo dia?",
+    "fonte": "conhecimento/09-4life-mobilizacoes.md",
+    "esperado": "não: no máximo uma mobilização por dia por comunidade",
+    "fatos": [
+      "não|nao"
+    ],
+    "proibidos": [
+      "^\\s*sim"
+    ]
+  },
+  {
+    "id": 6,
+    "pergunta": "Preciso estar em jejum para doar sangue?",
+    "fonte": "conhecimento/01-requisitos-basicos.md + FAQ",
+    "esperado": "não; fazer refeição leve e evitar gordura nas 3 horas anteriores",
+    "fatos": [
+      "não|nao",
+      "leve"
+    ],
+    "proibidos": [
+      "^\\s*sim"
+    ]
+  },
+  {
+    "id": 7,
+    "pergunta": "Depois de uma gripe, quanto tempo devo esperar para doar?",
+    "fonte": "conhecimento/03-impedimentos-temporarios.md",
+    "esperado": "7 dias após o fim dos sintomas",
+    "fatos": [
+      "7 dias|sete dias"
+    ]
+  },
+  {
+    "id": 8,
+    "pergunta": "Qual tipo sanguíneo é considerado doador universal?",
+    "fonte": "conhecimento/07-tipos-sanguineos.md",
+    "esperado": "O negativo (O-)",
+    "fatos": [
+      "O-|O negativo|O\\s*neg"
+    ],
+    "proibidos": [
+      "\\bA[+-]? (é|e) o doador|é o A\\b"
+    ]
+  }
+]

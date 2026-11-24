@@ -40,8 +40,11 @@ paths:
       responses: { '201': { description: Criada, content: { application/json: { schema: { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } } } }, '400': { description: Dados inválidos } }
   /comunidades/{id}:
     get:
-      summary: Detalhe agregado
-      description: Comunidade + membros (com nome do doador) + mobilizações da comunidade.
+      summary: Painel da comunidade (CQRS)
+      description: |
+        Lê o modelo de leitura do comunidades-service numa única chamada (`fonte: modelo-de-leitura`,
+        schema PainelComunidade). Se a projeção ainda não existir, compõe na hora
+        (comunidade + membros com nome + mobilizações, `fonte: composicao`).
       parameters: [ { $ref: '#/components/parameters/Id' } ]
       responses: { '200': { description: Detalhe agregado, content: { application/json: { schema: { $ref: '#/components/schemas/ComunidadeDetalhe' } } } }, '404': { description: Não encontrada } }
   /comunidades/{id}/membros:
@@ -51,8 +54,7 @@ paths:
       summary: Cria mobilização da comunidade
       description: |
         Valida no comunidades-service que o usuário é **admin** da comunidade (403 caso contrário)
-        e inicia a SAGA de criação. Contrato-alvo: responde `202` com recurso `PENDENTE`
-        e `Location`; o protótipo sem SAGA ainda responde `201` após criação síncrona.
+        e inicia a SAGA de criação: responde `202` com o recurso `PENDENTE`, `Location` e `_links.saga`.
       parameters: [ { $ref: '#/components/parameters/Id' } ]
       requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/NovaMobilizacao' } } } }
       responses:
@@ -64,13 +66,24 @@ paths:
         '400': { description: Dados inválidos }
         '403': { description: Não é admin }
         '404': { description: Comunidade não encontrada }
+  /mobilizacoes/{id}/saga:
+    get:
+      summary: Estado e linha do tempo da SAGA
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'mobilizacoes-service.yaml#/components/schemas/Saga' } } } }, '404': { description: Sem saga } }
+  /assistente/perguntar:
+    post:
+      summary: Assistente de dúvidas (RAG + LLM); timeout de 50 s no BFF e 55 s no gateway
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [pergunta], properties: { pergunta: { type: string }, usarRag: { type: boolean }, usarCache: { type: boolean } } } } } }
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/RespostaAssistente' } } } } }
+  /info/assistente/status: { get: { summary: Estado do assistente (público), responses: { '200': { description: OK } } } }
   /mobilizacoes/{id}:
     get:
       summary: Detalhe da mobilização + hemocentro (informacoes) + comunidade
       parameters: [ { $ref: '#/components/parameters/Id' } ]
       responses: { '200': { description: Detalhe enriquecido, content: { application/json: { schema: { $ref: '#/components/schemas/MobilizacaoDetalhe' } } } }, '404': { description: Não encontrada } }
   /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } } }
-  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } }
+  /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } } }
 components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
