@@ -51,6 +51,7 @@ export async function rotas(app: FastifyInstance): Promise<void> {
 
   app.get('/info/faq', async (req) => svc.informacoes(`/faq${qs(req.query as Record<string, string>)}`));
   app.get('/info/hemocentros', async (req) => svc.informacoes(`/hemocentros${qs(req.query as Record<string, string>)}`));
+  app.get('/info/assistente/status', async () => svc.informacoes('/assistente/status'));
   app.get('/info/conteudos', async (req) => svc.informacoes(`/conteudos${qs(req.query as Record<string, string>)}`));
   app.get<{ Params: { slug: string } }>('/info/conteudos/:slug', async (req) =>
     svc.informacoes(`/conteudos/${encodeURIComponent(req.params.slug)}`),
@@ -78,6 +79,16 @@ export async function rotas(app: FastifyInstance): Promise<void> {
       dica: dica ? { titulo: dica.titulo, resumo: dica.resumo } : null,
       avisos,
     };
+  });
+
+  // Assistente de dúvidas (RAG + LLM). No app, a resposta vai enxuta: texto, origem e títulos das fontes.
+  app.post('/assistente/perguntar', async (req) => {
+    usuarioId(req);
+    const r = await svc.informacoes<{ resposta: string; origem: string; fontes: { titulo: string }[]; aviso?: string }>(
+      '/assistente/perguntar',
+      { metodo: 'POST', corpo: req.body, timeoutMs: config.assistenteTimeoutMs },
+    );
+    return { resposta: r.resposta, origem: r.origem, fontes: [...new Set(r.fontes.map((f) => f.titulo))], aviso: r.aviso };
   });
 
   app.get('/perfil', async (req) => svc.doadores(`/doadores/${usuarioId(req)}`));

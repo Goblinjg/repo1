@@ -10,3 +10,5 @@ data:
   DB_PORT: "5432"
   DB_NAME: doadores
   DB_USER: doadores
+  AMQP_HOST: rabbitmq
+  AMQP_PORT: "5672"

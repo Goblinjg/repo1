@@ -41,11 +41,11 @@ spec:
       labels: { app.kubernetes.io/name: informacoes-db, app.kubernetes.io/component: database, app.kubernetes.io/part-of: 4life }
     spec:
       securityContext:
-        fsGroup: 70            # usuário postgres da imagem alpine
+        fsGroup: 999           # usuário postgres da imagem pgvector (Debian)
       terminationGracePeriodSeconds: 30
       containers:
         - name: postgres
-          image: postgres:16-alpine
+          image: pgvector/pgvector:pg16   # PostgreSQL 16 + pgvector (base vetorial do RAG)
           ports:
             - { name: postgres, containerPort: 5432 }
           env:

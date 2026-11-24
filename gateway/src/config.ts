@@ -16,6 +16,8 @@ export const config = {
   logLevel: process.env.LOG_LEVEL ?? 'info',
   instancia: process.env.POD_NAME ?? os.hostname(),
   timeoutMs: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 5000),
+  // rotas do assistente (LLM com timeout + retry lá dentro) precisam de um prazo maior
+  assistenteTimeoutMs: Number(process.env.ASSISTENTE_TIMEOUT_MS ?? 55_000),
   jwt: {
     segredo: new TextEncoder().encode(segredo),
     emissor: process.env.JWT_ISSUER ?? '4life-gateway',

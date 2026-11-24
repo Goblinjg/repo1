@@ -10,3 +10,11 @@ data:
   DB_PORT: "5432"
   DB_NAME: informacoes
   DB_USER: informacoes
+  AMQP_HOST: rabbitmq
+  AMQP_PORT: "5672"
+  OLLAMA_URL: http://ollama:11434
+  LLM_MODELO: qwen2.5:0.5b
+  EMBEDDINGS_MODELO: bge-m3
+  # Orçamento por pergunta < timeout padrão do Envoy do Ingress (15 s): estourou → fallback, não 504.
+  ASSISTENTE_ORCAMENTO_MS: "12000"
+  LLM_TIMEOUT_MS: "10000"

@@ -1,5 +1,7 @@
 import type { FastifyInstance } from 'fastify';
+import { consultaPainel, reconstruirProjecao } from './cqrs/modelo-leitura.js';
 import { pool } from './db.js';
+import { emTransacao, gravarNaOutbox } from './outbox/relay.js';
 
 const SELECT_COMUNIDADE = `
   SELECT c.id, c.nome, c.descricao, c.cidade, c.uf, c.criador_id AS "criadorId",
@@ -65,6 +67,13 @@ export async function rotas(app: FastifyInstance): Promise<void> {
           [req.body.nome, req.body.descricao ?? null, req.body.cidade, req.body.uf, criador],
         );
         await cliente.query(`INSERT INTO membros (comunidade_id, doador_id, papel) VALUES ($1, $2, 'admin')`, [rows[0].id, criador]);
+        // evento na mesma transação (Transactional Outbox): alimenta a projeção do painel
+        await gravarNaOutbox(cliente, {
+          agregado: 'comunidade',
+          agregadoId: rows[0].id,
+          tipo: 'comunidade.criada',
+          dados: { comunidadeId: rows[0].id, nome: req.body.nome, criadorId: criador },
+        });
         await cliente.query('COMMIT');
         const criada = await pool.query(`${SELECT_COMUNIDADE} WHERE c.id = $1`, [rows[0].id]);
         return reply.code(201).send(criada.rows[0]);
@@ -105,12 +114,21 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     async (req, reply) => {
       const existe = await pool.query('SELECT 1 FROM comunidades WHERE id = $1', [req.params.id]);
       if (!existe.rowCount) return reply.code(404).send({ erro: 'comunidade não encontrada' });
-      const { rows } = await pool.query(
-        `INSERT INTO membros (comunidade_id, doador_id, papel) VALUES ($1, $2, 'membro')
-         RETURNING doador_id AS "doadorId", papel, entrou_em AS "entrouEm"`,
-        [req.params.id, req.body.doadorId],
-      );
-      return reply.code(201).send(rows[0]);
+      const membro = await emTransacao(async (c) => {
+        const { rows } = await c.query(
+          `INSERT INTO membros (comunidade_id, doador_id, papel) VALUES ($1, $2, 'membro')
+           RETURNING doador_id AS "doadorId", papel, entrou_em AS "entrouEm"`,
+          [req.params.id, req.body.doadorId],
+        );
+        await gravarNaOutbox(c, {
+          agregado: 'comunidade',
+          agregadoId: req.params.id,
+          tipo: 'membro.entrou',
+          dados: { comunidadeId: req.params.id, doadorId: req.body.doadorId },
+        });
+        return rows[0];
+      });
+      return reply.code(201).send(membro);
     },
   );
 
@@ -118,12 +136,34 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     '/comunidades/:id/membros/:doadorId',
     { schema: { params: { type: 'object', required: ['id', 'doadorId'], properties: { id: uuid, doadorId: uuid } } } },
     async (req, reply) => {
-      const { rowCount } = await pool.query('DELETE FROM membros WHERE comunidade_id = $1 AND doador_id = $2', [
-        req.params.id,
-        req.params.doadorId,
-      ]);
-      if (!rowCount) return reply.code(404).send({ erro: 'não é membro' });
+      const removido = await emTransacao(async (c) => {
+        const { rowCount } = await c.query('DELETE FROM membros WHERE comunidade_id = $1 AND doador_id = $2', [
+          req.params.id,
+          req.params.doadorId,
+        ]);
+        if (!rowCount) return false;
+        await gravarNaOutbox(c, {
+          agregado: 'comunidade',
+          agregadoId: req.params.id,
+          tipo: 'membro.saiu',
+          dados: { comunidadeId: req.params.id, doadorId: req.params.doadorId },
+        });
+        return true;
+      });
+      if (!removido) return reply.code(404).send({ erro: 'não é membro' });
       return reply.code(204).send();
     },
   );
+
+  // ---------- CQRS: lado da consulta ----------
+  // Lê só o documento pronto da projeção (uma query, sem fan-out). Eventualmente consistente:
+  // `atualizadoEm` diz quando a projeção foi atualizada pela última vez.
+  app.get<{ Params: { id: string } }>('/comunidades/:id/painel', { schema: { params: paramId } }, async (req, reply) => {
+    const painel = await consultaPainel.obter(req.params.id);
+    if (!painel) return reply.code(404).send({ erro: 'painel ainda não projetado para esta comunidade' });
+    return painel;
+  });
+
+  // Recuperação operacional: reconstrói a projeção inteira a partir do modelo de escrita.
+  app.post('/comunidades/painel/reconstruir', async () => ({ reconstruidas: await reconstruirProjecao(true) }));
 }

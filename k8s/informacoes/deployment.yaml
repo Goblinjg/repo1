@@ -42,9 +42,13 @@ spec:
               valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: DB_PASSWORD
               valueFrom: { secretKeyRef: { name: informacoes-db-credentials, key: password } }
+            - name: AMQP_USER
+              valueFrom: { secretKeyRef: { name: rabbitmq-credentials, key: username } }
+            - name: AMQP_PASSWORD
+              valueFrom: { secretKeyRef: { name: rabbitmq-credentials, key: password } }
           resources:
-            requests: { cpu: 50m, memory: 96Mi }
-            limits: { cpu: 500m, memory: 256Mi }
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { cpu: 500m, memory: 384Mi }   # LangChain + cliente do Ollama
           # startup: tolera boot lento (migrations) sem o liveness matar o pod antes da hora
           startupProbe:
             httpGet: { path: /health, port: http }

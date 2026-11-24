@@ -4,7 +4,7 @@ import { pool } from './db.js';
 const CATEGORIAS = ['requisitos', 'preparo', 'documentos', 'mitos', 'dica'];
 const RESUMO = `slug, titulo, categoria, resumo`;
 const COMPLETO = `${RESUMO}, corpo, atualizado_em AS "atualizadoEm"`;
-const HEMOCENTRO = `id, nome, cidade, uf, endereco, telefone, horarios`;
+const HEMOCENTRO = `id, nome, cidade, uf, endereco, telefone, horarios, capacidade_diaria AS "capacidadeDiaria"`;
 const filtroCategoria = {
   type: 'object',
   properties: { categoria: { type: 'string', enum: CATEGORIAS } },

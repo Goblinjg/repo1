@@ -20,4 +20,13 @@ export const config = {
     user: obrigatoria('DB_USER'),
     password: obrigatoria('DB_PASSWORD'),
   },
+  amqp: {
+    hostname: obrigatoria('AMQP_HOST'),
+    port: Number(process.env.AMQP_PORT ?? 5672),
+    username: obrigatoria('AMQP_USER'),
+    password: obrigatoria('AMQP_PASSWORD'),
+  },
+  outbox: {
+    intervaloMs: Number(process.env.OUTBOX_INTERVALO_MS ?? 500),
+  },
 };

@@ -28,8 +28,13 @@ O modelo reduz o fan-out para a leitura do painel, sem enfraquecer as decisões
 transacionais de escrita e autorização. A especificação e o diagrama estão em
 [`docs/pitch/pitch-parte2.md`](../../../../docs/pitch/pitch-parte2.md), seção 7.0.
 
-## Estado do protótipo
+## Implementação (Parte 4)
 
-`modelo-leitura.ts` contém apenas interfaces de contrato. A tabela de projeção,
-os consumidores, o endpoint de consulta e a publicação por outbox **ainda não
-estão implementados**.
+- `modelo-leitura.ts`: `Projecao` (consome `comunidades.painel`), `ConsultaPainel`
+  (`GET /comunidades/{id}/painel`) e a reconstrução (`POST /comunidades/painel/reconstruir`).
+- Réplicas locais alimentadas por eventos: `doadores_nomes` (`doador.*`, publicados
+  pelo doadores-service via outbox) e `mobilizacoes_resumo` (`mobilizacao.*`).
+- O documento é remontado a partir do modelo de escrita + réplicas, com `versao`
+  incrementada e `atualizado_em`: é idempotente e reconstruível.
+- O bff-web lê o painel em **uma** chamada (`fonte: "modelo-de-leitura"`).
+  Defasagem medida: ~0,5 s.

@@ -54,16 +54,19 @@ function cabecalhosInternos(req: FastifyRequest, headers: IncomingHttpHeaders): 
   return limpos;
 }
 
-for (const [prefixo, upstream] of [
-  ['/api/mobile', config.bffMobile],
-  ['/api/web', config.bffWeb],
+// O prefixo mais específico (/assistente) vence o genérico: só ele ganha o timeout maior.
+for (const [prefixo, upstream, rewritePrefix, timeout] of [
+  ['/api/mobile/assistente', config.bffMobile, '/assistente', config.assistenteTimeoutMs],
+  ['/api/web/assistente', config.bffWeb, '/assistente', config.assistenteTimeoutMs],
+  ['/api/mobile', config.bffMobile, '', config.timeoutMs],
+  ['/api/web', config.bffWeb, '', config.timeoutMs],
 ] as const) {
   await app.register(proxy, {
     upstream,
     prefix: prefixo,
-    rewritePrefix: '',
+    rewritePrefix,
     preHandler: autenticar,
-    http: { requestOptions: { timeout: config.timeoutMs } },
+    http: { requestOptions: { timeout } },
     replyOptions: { rewriteRequestHeaders: (req, headers) => cabecalhosInternos(req as FastifyRequest, headers) },
   });
 }

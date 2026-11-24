@@ -34,13 +34,16 @@ caso "doadores-service → doadores-db:5432 (próprio banco)"        conecta   d
 caso "mobilizacoes-service → rabbitmq:5672"                       conecta   mobilizacoes-service rabbitmq 5672
 caso "bff-web → comunidades-service:3002"                         conecta   bff-web              comunidades-service 3002
 caso "gateway → bff-mobile:4001"                                  conecta   gateway              bff-mobile 4001
+caso "informacoes-service → rabbitmq:5672 (participante da SAGA)" conecta  informacoes-service  rabbitmq 5672
+caso "informacoes-service → ollama:11434 (LLM do assistente)"     conecta   informacoes-service  ollama 11434
 
 echo "== Acessos bloqueados pelo isolamento de redes"
 caso "doadores-service → comunidades-db:5432 (banco ALHEIO)"      bloqueado doadores-service     comunidades-db 5432
 caso "mobilizacoes-service → doadores-db:5432 (banco ALHEIO)"     bloqueado mobilizacoes-service doadores-db 5432
 caso "bff-web → doadores-db:5432 (BFF não acessa banco)"          bloqueado bff-web              doadores-db 5432
 caso "gateway → doadores-service:3001 (gateway só vê BFFs)"       bloqueado gateway              doadores-service 3001
-caso "informacoes-service → rabbitmq:5672 (fora da rede bus)"     bloqueado informacoes-service  rabbitmq 5672
+caso "comunidades-service → ollama:11434 (fora da rede llm)"      bloqueado comunidades-service  ollama 11434
+caso "bff-web → ollama:11434 (LLM só para o informacoes)"         bloqueado bff-web              ollama 11434
 
 # Mesmo sabendo o IP (sem depender de DNS), não há rota entre redes diferentes.
 IP_COM_DB=$(docker inspect "$(docker compose ps -q comunidades-db)" --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')

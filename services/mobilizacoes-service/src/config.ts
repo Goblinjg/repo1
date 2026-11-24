@@ -26,4 +26,13 @@ export const config = {
     username: obrigatoria('AMQP_USER'),
     password: obrigatoria('AMQP_PASSWORD'),
   },
+  outbox: {
+    intervaloMs: Number(process.env.OUTBOX_INTERVALO_MS ?? 500),
+  },
+  saga: {
+    // passo sem resposta dentro do prazo = falha (dispara as compensações)
+    timeoutMs: Number(process.env.SAGA_TIMEOUT_MS ?? 30_000),
+    // reenvios de uma compensação antes de marcar a saga como FALHOU
+    maxTentativas: Number(process.env.SAGA_MAX_TENTATIVAS ?? 20),
+  },
 };

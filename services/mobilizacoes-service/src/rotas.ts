@@ -1,17 +1,20 @@
 import type { FastifyInstance } from 'fastify';
 import { config } from './config.js';
 import { pool } from './db.js';
-import { criarEvento, publicar, type Evento } from './broker.js';
+import { emTransacao, gravarNaOutbox } from './outbox/relay.js';
+import { consultarSaga, type criarOrquestrador } from './saga/orquestrador.js';
 
 const SELECT_MOBILIZACAO = `
   SELECT m.id, m.comunidade_id AS "comunidadeId", m.titulo, m.descricao, m.data_hora AS "dataHora",
          m.cidade, m.uf, m.hemocentro_id AS "hemocentroId", m.local, m.vagas,
          (SELECT count(*)::int FROM interesses i WHERE i.mobilizacao_id = m.id) AS "totalInteressados",
+         m.estado, m.motivo_cancelamento AS "motivoCancelamento",
          m.criador_id AS "criadorId", m.criado_em AS "criadoEm"
     FROM mobilizacoes m`;
 
 const uuid = { type: 'string', format: 'uuid' } as const;
 const paramId = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
+const ESTADOS = ['PENDENTE', 'CONFIRMADA', 'CANCELADA', 'TODAS'];
 const iniciadoEm = new Date().toISOString();
 
 interface NovaMobilizacao {
@@ -26,51 +29,48 @@ interface NovaMobilizacao {
   vagas?: number | null;
 }
 
-export async function rotas(app: FastifyInstance): Promise<void> {
-  // Protótipo: publica após o commit. Se a publicação falhar, tenta guardar o
-  // evento na outbox como fallback best-effort. Como essa gravação é posterior
-  // e separada da escrita de domínio, ainda há uma janela de perda; o desenho
-  // transacional com relay está especificado para a etapa seguinte.
-  async function publicarOuGuardar(evento: Evento, agregadoId: string): Promise<void> {
-    try {
-      await publicar(evento);
-      app.log.info({ eventoId: evento.id, tipo: evento.tipo }, 'evento publicado');
-    } catch (erro) {
-      app.log.error({ err: (erro as Error).message, eventoId: evento.id }, 'falha ao publicar; tentando fallback na outbox');
-      await pool.query(
-        `INSERT INTO outbox (id, agregado, agregado_id, tipo, payload) VALUES ($1, 'mobilizacao', $2, $3, $4)`,
-        [evento.id, agregadoId, evento.tipo, JSON.stringify(evento)],
-      );
-    }
-  }
+interface Opcoes {
+  orquestrador: ReturnType<typeof criarOrquestrador>;
+}
 
+export async function rotas(app: FastifyInstance, { orquestrador }: Opcoes): Promise<void> {
   app.get('/whoami', async () => ({ servico: config.servico, pod: config.instancia, iniciadoEm }));
 
-  app.get<{ Querystring: { comunidadeId?: string; cidade?: string; interessado?: string; futuras?: boolean } }>(
+  // Por padrão lista só mobilizações CONFIRMADAS (as PENDENTES ainda estão na saga).
+  app.get<{ Querystring: { comunidadeId?: string; cidade?: string; interessado?: string; futuras?: boolean; estado?: string } }>(
     '/mobilizacoes',
     {
       schema: {
         querystring: {
           type: 'object',
-          properties: { comunidadeId: uuid, cidade: { type: 'string' }, interessado: uuid, futuras: { type: 'boolean', default: false } },
+          properties: {
+            comunidadeId: uuid,
+            cidade: { type: 'string' },
+            interessado: uuid,
+            futuras: { type: 'boolean', default: false },
+            estado: { type: 'string', enum: ESTADOS, default: 'CONFIRMADA' },
+          },
         },
       },
     },
     async (req) => {
-      const { comunidadeId, cidade, interessado, futuras } = req.query;
+      const { comunidadeId, cidade, interessado, futuras, estado } = req.query;
       const { rows } = await pool.query(
         `${SELECT_MOBILIZACAO}
           WHERE ($1::uuid IS NULL OR m.comunidade_id = $1)
             AND ($2::text IS NULL OR lower(m.cidade) = lower($2))
             AND ($3::uuid IS NULL OR EXISTS (SELECT 1 FROM interesses i WHERE i.mobilizacao_id = m.id AND i.doador_id = $3))
             AND (NOT $4 OR m.data_hora >= now())
+            AND ($5 = 'TODAS' OR m.estado = $5)
           ORDER BY m.data_hora LIMIT 200`,
-        [comunidadeId ?? null, cidade ?? null, interessado ?? null, futuras ?? false],
+        [comunidadeId ?? null, cidade ?? null, interessado ?? null, futuras ?? false, estado ?? 'CONFIRMADA'],
       );
       return rows;
     },
   );
 
+  // T1 da SAGA: grava a mobilização PENDENTE, a saga e o primeiro comando (na outbox) numa
+  // única transação e responde 202. O cliente acompanha em GET /mobilizacoes/{id}/saga.
   app.post<{ Body: NovaMobilizacao; Headers: { 'x-user-id': string } }>(
     '/mobilizacoes',
     {
@@ -96,18 +96,28 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       const m = req.body;
-      const { rows } = await pool.query<{ id: string }>(
-        `INSERT INTO mobilizacoes (comunidade_id, titulo, descricao, data_hora, cidade, uf, hemocentro_id, local, vagas, criador_id)
-         VALUES ($1, $2, $3, $4, $5, upper($6), $7, $8, $9, $10) RETURNING id`,
-        [m.comunidadeId, m.titulo, m.descricao ?? null, m.dataHora, m.cidade, m.uf, m.hemocentroId ?? null, m.local ?? null, m.vagas ?? null, req.headers['x-user-id']],
-      );
-      const id = rows[0].id;
-      await publicarOuGuardar(
-        criarEvento('mobilizacao.criada', { mobilizacaoId: id, comunidadeId: m.comunidadeId, dataHora: m.dataHora }),
-        id,
-      );
+      const criador = req.headers['x-user-id'];
+      const { id, sagaId } = await emTransacao(async (c) => {
+        const { rows } = await c.query<{ id: string; data_hora: Date }>(
+          `INSERT INTO mobilizacoes (comunidade_id, titulo, descricao, data_hora, cidade, uf, hemocentro_id, local, vagas, criador_id, estado)
+           VALUES ($1, $2, $3, $4, $5, upper($6), $7, $8, $9, $10, 'PENDENTE') RETURNING id, data_hora`,
+          [m.comunidadeId, m.titulo, m.descricao ?? null, m.dataHora, m.cidade, m.uf, m.hemocentroId ?? null, m.local ?? null, m.vagas ?? null, criador],
+        );
+        const saga = await orquestrador.iniciar(c, {
+          mobilizacaoId: rows[0].id,
+          comunidadeId: m.comunidadeId,
+          criadorId: criador,
+          dataHora: rows[0].data_hora.toISOString(),
+          hemocentroId: m.hemocentroId ?? null,
+        });
+        return { id: rows[0].id, sagaId: saga.sagaId };
+      });
+      req.log.info({ mobilizacaoId: id, sagaId }, 'saga iniciada');
       const criada = await pool.query(`${SELECT_MOBILIZACAO} WHERE m.id = $1`, [id]);
-      return reply.code(201).send(criada.rows[0]);
+      return reply
+        .code(202)
+        .header('location', `/mobilizacoes/${id}`)
+        .send({ ...criada.rows[0], sagaId, _links: { self: `/mobilizacoes/${id}`, saga: `/mobilizacoes/${id}/saga` } });
     },
   );
 
@@ -115,6 +125,12 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     const { rows } = await pool.query(`${SELECT_MOBILIZACAO} WHERE m.id = $1`, [req.params.id]);
     if (!rows[0]) return reply.code(404).send({ erro: 'mobilização não encontrada' });
     return rows[0];
+  });
+
+  app.get<{ Params: { id: string } }>('/mobilizacoes/:id/saga', { schema: { params: paramId } }, async (req, reply) => {
+    const saga = await consultarSaga(req.params.id);
+    if (!saga) return reply.code(404).send({ erro: 'nenhuma saga para esta mobilização' });
+    return saga;
   });
 
   app.post<{ Params: { id: string }; Body: { doadorId: string } }>(
@@ -125,15 +141,19 @@ export async function rotas(app: FastifyInstance): Promise<void> {
       try {
         await cliente.query('BEGIN');
         // FOR UPDATE serializa inscrições concorrentes na mesma mobilização (controle de vagas).
-        const mob = await cliente.query<{ vagas: number | null; comunidade_id: string }>(
-          'SELECT vagas, comunidade_id FROM mobilizacoes WHERE id = $1 FOR UPDATE',
+        const mob = await cliente.query<{ vagas: number | null; estado: string }>(
+          'SELECT vagas, estado FROM mobilizacoes WHERE id = $1 FOR UPDATE',
           [req.params.id],
         );
         if (!mob.rows[0]) {
           await cliente.query('ROLLBACK');
           return reply.code(404).send({ erro: 'mobilização não encontrada' });
         }
-        const { vagas } = mob.rows[0];
+        const { vagas, estado } = mob.rows[0];
+        if (estado !== 'CONFIRMADA') {
+          await cliente.query('ROLLBACK');
+          return reply.code(422).send({ erro: `mobilização ${estado.toLowerCase()}: não aceita interesses` });
+        }
         if (vagas !== null) {
           const total = await cliente.query<{ n: number }>('SELECT count(*)::int AS n FROM interesses WHERE mobilizacao_id = $1', [req.params.id]);
           if (total.rows[0].n >= vagas) {
@@ -146,11 +166,14 @@ export async function rotas(app: FastifyInstance): Promise<void> {
            RETURNING mobilizacao_id AS "mobilizacaoId", doador_id AS "doadorId", criado_em AS "criadoEm"`,
           [req.params.id, req.body.doadorId],
         );
+        // evento gravado na mesma transação do interesse (Transactional Outbox)
+        await gravarNaOutbox(cliente, {
+          agregado: 'mobilizacao',
+          agregadoId: req.params.id,
+          tipo: 'mobilizacao.interesse-registrado',
+          dados: { mobilizacaoId: req.params.id, doadorId: req.body.doadorId },
+        });
         await cliente.query('COMMIT');
-        await publicarOuGuardar(
-          criarEvento('mobilizacao.interesse-registrado', { mobilizacaoId: req.params.id, doadorId: req.body.doadorId }),
-          req.params.id,
-        );
         return reply.code(201).send(rows[0]);
       } catch (erro) {
         await cliente.query('ROLLBACK').catch(() => {});

@@ -12,3 +12,4 @@ data:
   DB_USER: mobilizacoes
   AMQP_HOST: rabbitmq
   AMQP_PORT: "5672"
+  SAGA_TIMEOUT_MS: "30000"

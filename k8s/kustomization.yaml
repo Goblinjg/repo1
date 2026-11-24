@@ -10,6 +10,7 @@ resources:
   - comunidades
   - mobilizacoes
   - informacoes
+  - ollama
   - bff-mobile
   - bff-web
   - gateway

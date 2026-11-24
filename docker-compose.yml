@@ -5,6 +5,8 @@
 #   app               BFFs <-> serviços de domínio         (internal: sem saída para a internet)
 #   bus               serviços que usam mensageria <-> RabbitMQ
 #   data-<servico>    cada serviço <-> SOMENTE o seu banco
+#   llm               informacoes-service <-> Ollama (LLM local)          (internal)
+#   llm-saida         só o Ollama, para baixar os modelos na primeira subida
 #   ops               painel de administração do RabbitMQ (apenas 127.0.0.1)
 #
 # Credenciais vêm do arquivo .env (copie de .env.example ou rode scripts/gerar-env.sh).
@@ -59,6 +61,8 @@ services:
 
   informacoes-db:
     <<: *db
+    # PostgreSQL 16 com a extensão pgvector: base vetorial do RAG no banco do próprio serviço
+    image: pgvector/pgvector:pg16
     environment:
       POSTGRES_DB: informacoes
       POSTGRES_USER: informacoes
@@ -96,9 +100,13 @@ services:
       DB_NAME: doadores
       DB_USER: doadores
       DB_PASSWORD: ${DOADORES_DB_PASSWORD}
-    networks: [app, data-doadores]
+      AMQP_HOST: rabbitmq
+      AMQP_USER: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+    networks: [app, bus, data-doadores]
     depends_on:
       doadores-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
 
   comunidades-service:
     <<: *servico
@@ -128,6 +136,7 @@ services:
       DB_NAME: mobilizacoes
       DB_USER: mobilizacoes
       DB_PASSWORD: ${MOBILIZACOES_DB_PASSWORD}
+      SAGA_TIMEOUT_MS: ${SAGA_TIMEOUT_MS:-30000}
       AMQP_HOST: rabbitmq
       AMQP_USER: ${RABBITMQ_USER}
       AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
@@ -146,9 +155,43 @@ services:
       DB_NAME: informacoes
       DB_USER: informacoes
       DB_PASSWORD: ${INFORMACOES_DB_PASSWORD}
-    networks: [app, data-informacoes]
+      AMQP_HOST: rabbitmq
+      AMQP_USER: ${RABBITMQ_USER}
+      AMQP_PASSWORD: ${RABBITMQ_PASSWORD}
+      OLLAMA_URL: http://ollama:11434
+      LLM_MODELO: ${LLM_MODELO:-qwen2.5:0.5b}
+      EMBEDDINGS_MODELO: ${EMBEDDINGS_MODELO:-bge-m3}
+    networks: [app, bus, data-informacoes, llm]
+    # o Ollama NÃO é dependência de subida: sem ele o assistente responde em fallback
     depends_on:
       informacoes-db: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+
+  # ------------------------------------------------------------------ LLM local
+  ollama:
+    image: ollama/ollama:0.40.18
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: 24h   # mantém o modelo carregado na memória entre perguntas
+    volumes: [ollama-data:/root/.ollama]
+    networks: [llm, llm-saida]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Tarefa única: baixa os modelos no volume (só demora na primeira vez).
+  ollama-modelos:
+    image: ollama/ollama:0.40.18
+    restart: "no"
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["sh", "-c", "ollama pull ${LLM_MODELO:-qwen2.5:0.5b} && ollama pull ${EMBEDDINGS_MODELO:-bge-m3}"]
+    networks: [llm]
+    depends_on:
+      ollama: { condition: service_healthy }
 
   # ------------------------------------------------------------------ BFFs
   bff-mobile:
@@ -200,6 +243,8 @@ networks:
   data-comunidades: { internal: true }
   data-mobilizacoes: { internal: true }
   data-informacoes: { internal: true }
+  llm: { internal: true }
+  llm-saida: {}
   ops: {}
 
 volumes:
@@ -208,3 +253,4 @@ volumes:
   mobilizacoes-db-data:
   informacoes-db-data:
   rabbitmq-data:
+  ollama-data:

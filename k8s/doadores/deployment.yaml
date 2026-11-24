@@ -42,6 +42,10 @@ spec:
               valueFrom: { fieldRef: { fieldPath: metadata.name } }
             - name: DB_PASSWORD
               valueFrom: { secretKeyRef: { name: doadores-db-credentials, key: password } }
+            - name: AMQP_USER
+              valueFrom: { secretKeyRef: { name: rabbitmq-credentials, key: username } }
+            - name: AMQP_PASSWORD
+              valueFrom: { secretKeyRef: { name: rabbitmq-credentials, key: password } }
           resources:
             requests: { cpu: 50m, memory: 96Mi }
             limits: { cpu: 500m, memory: 256Mi }

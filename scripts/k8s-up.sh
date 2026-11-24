@@ -55,7 +55,11 @@ fi
 
 passo "7/7 aguardando tudo ficar Ready"
 kubectl -n 4life rollout status statefulset --timeout=300s
-kubectl -n 4life rollout status deployment --timeout=300s
+kubectl -n 4life rollout status deployment --timeout=600s
+# Na primeira vez o Job baixa os modelos do LLM (~1,6 GB) para o PVC do Ollama.
+# Enquanto isso o sistema já funciona; o assistente responde em modo fallback.
+echo "aguardando o download dos modelos do Ollama (Job ollama-modelos)..."
+kubectl -n 4life wait --for=condition=complete job/ollama-modelos --timeout=1800s
 kubectl -n 4life get pods -o wide
 
 echo -n "aguardando IP do Ingress"

@@ -28,13 +28,16 @@ caso "doadores-service → doadores-db:5432 (próprio banco)"      conecta   dep
 caso "mobilizacoes-service → rabbitmq:5672"                     conecta   deploy/mobilizacoes-service rabbitmq 5672
 caso "bff-web → comunidades-service:3002"                       conecta   deploy/bff-web              comunidades-service 3002
 caso "gateway → bff-mobile:4001"                                conecta   deploy/gateway              bff-mobile 4001
+caso "informacoes-service → rabbitmq:5672 (participante da SAGA)" conecta deploy/informacoes-service rabbitmq 5672
+caso "informacoes-service → ollama:11434 (LLM do assistente)"   conecta   deploy/informacoes-service  ollama 11434
 
 echo "== Acessos bloqueados"
 caso "doadores-service → comunidades-db:5432 (banco ALHEIO)"    bloqueado deploy/doadores-service     comunidades-db 5432
 caso "mobilizacoes-service → doadores-db:5432 (banco ALHEIO)"   bloqueado deploy/mobilizacoes-service doadores-db 5432
 caso "bff-web → doadores-db:5432 (BFF não acessa banco)"        bloqueado deploy/bff-web              doadores-db 5432
 caso "gateway → doadores-service:3001 (gateway só vê BFFs)"     bloqueado deploy/gateway              doadores-service 3001
-caso "informacoes-service → rabbitmq:5672"                      bloqueado deploy/informacoes-service  rabbitmq 5672
+caso "comunidades-service → ollama:11434"                       bloqueado deploy/comunidades-service  ollama 11434
+caso "bff-web → ollama:11434 (LLM só para o informacoes)"       bloqueado deploy/bff-web              ollama 11434
 
 echo "== $passou ok, $falhou divergente(s)"
 [[ $falhou -eq 0 ]]

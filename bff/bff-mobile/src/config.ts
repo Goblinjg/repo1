@@ -13,6 +13,8 @@ export const config = {
   logLevel: process.env.LOG_LEVEL ?? 'info',
   instancia: process.env.POD_NAME ?? os.hostname(),
   timeoutMs: Number(process.env.UPSTREAM_TIMEOUT_MS ?? 3000),
+  // o assistente chama um LLM (timeout + retry no informacoes-service): precisa de mais tempo
+  assistenteTimeoutMs: Number(process.env.ASSISTENTE_TIMEOUT_MS ?? 50_000),
   urls: {
     doadores: obrigatoria('DOADORES_URL'),
     comunidades: obrigatoria('COMUNIDADES_URL'),

@@ -26,4 +26,7 @@ export const config = {
     username: obrigatoria('AMQP_USER'),
     password: obrigatoria('AMQP_PASSWORD'),
   },
+  outbox: {
+    intervaloMs: Number(process.env.OUTBOX_INTERVALO_MS ?? 500),
+  },
 };

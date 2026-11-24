@@ -19,10 +19,11 @@ interface Opcoes {
   metodo?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   corpo?: unknown;
   usuario?: string;
+  timeoutMs?: number; // padrão: UPSTREAM_TIMEOUT_MS (o assistente com LLM usa um prazo maior)
 }
 
 function servico(nome: string, base: string) {
-  return async function chamar<T = any>(caminho: string, { metodo = 'GET', corpo, usuario }: Opcoes = {}): Promise<T> {
+  return async function chamar<T = any>(caminho: string, { metodo = 'GET', corpo, usuario, timeoutMs = config.timeoutMs }: Opcoes = {}): Promise<T> {
     const headers: Record<string, string> = {};
     if (corpo !== undefined) headers['content-type'] = 'application/json';
     if (usuario) headers['x-user-id'] = usuario;
@@ -32,7 +33,7 @@ function servico(nome: string, base: string) {
         method: metodo,
         headers,
         body: corpo !== undefined ? JSON.stringify(corpo) : undefined,
-        signal: AbortSignal.timeout(config.timeoutMs),
+        signal: AbortSignal.timeout(timeoutMs),
       });
     } catch (erro) {
       throw new ServicoIndisponivel(nome, erro);

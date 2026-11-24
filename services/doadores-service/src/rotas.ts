@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
 import { pool } from './db.js';
+import { emTransacao, gravarNaOutbox } from './outbox/relay.js';
 import { conferir, gerarHash } from './senha.js';
 
 const COLUNAS = `id, nome, email, tipo_sanguineo AS "tipoSanguineo", cidade, uf,
@@ -56,12 +57,23 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     },
     async (req, reply) => {
       const d = req.body;
-      const { rows } = await pool.query(
-        `INSERT INTO doadores (nome, email, senha_hash, tipo_sanguineo, cidade, uf, data_ultima_doacao)
-         VALUES ($1, lower($2), $3, $4, $5, upper($6), $7) RETURNING ${COLUNAS}`,
-        [d.nome, d.email, await gerarHash(d.senha), d.tipoSanguineo ?? null, d.cidade, d.uf, d.dataUltimaDoacao ?? null],
-      );
-      return reply.code(201).send(rows[0]);
+      const hash = await gerarHash(d.senha);
+      const criado = await emTransacao(async (c) => {
+        const { rows } = await c.query(
+          `INSERT INTO doadores (nome, email, senha_hash, tipo_sanguineo, cidade, uf, data_ultima_doacao)
+           VALUES ($1, lower($2), $3, $4, $5, upper($6), $7) RETURNING ${COLUNAS}`,
+          [d.nome, d.email, hash, d.tipoSanguineo ?? null, d.cidade, d.uf, d.dataUltimaDoacao ?? null],
+        );
+        // evento na mesma transação do cadastro (Transactional Outbox)
+        await gravarNaOutbox(c, {
+          agregado: 'doador',
+          agregadoId: rows[0].id,
+          tipo: 'doador.cadastrado',
+          dados: { doadorId: rows[0].id, nome: rows[0].nome, cidade: rows[0].cidade, uf: rows[0].uf },
+        });
+        return rows[0];
+      });
+      return reply.code(201).send(criado);
     },
   );
 
@@ -94,12 +106,22 @@ export async function rotas(app: FastifyInstance): Promise<void> {
         sets.push(`${colunas[campo]} = $${valores.length}`);
       }
       valores.push(req.params.id);
-      const { rows } = await pool.query(
-        `UPDATE doadores SET ${sets.join(', ')}, atualizado_em = now() WHERE id = $${valores.length} RETURNING ${COLUNAS}`,
-        valores,
-      );
-      if (!rows[0]) return reply.code(404).send({ erro: 'doador não encontrado' });
-      return rows[0];
+      const atualizado = await emTransacao(async (c) => {
+        const { rows } = await c.query(
+          `UPDATE doadores SET ${sets.join(', ')}, atualizado_em = now() WHERE id = $${valores.length} RETURNING ${COLUNAS}`,
+          valores,
+        );
+        if (!rows[0]) return null;
+        await gravarNaOutbox(c, {
+          agregado: 'doador',
+          agregadoId: rows[0].id,
+          tipo: 'doador.atualizado',
+          dados: { doadorId: rows[0].id, nome: rows[0].nome, cidade: rows[0].cidade, uf: rows[0].uf },
+        });
+        return rows[0];
+      });
+      if (!atualizado) return reply.code(404).send({ erro: 'doador não encontrado' });
+      return atualizado;
     },
   );
 

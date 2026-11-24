@@ -45,5 +45,20 @@ ordem reversa. Falhas e timeouts de compensação são persistidos e retentados.
 
 Os diagramas de sequência e detalhes das filas estão em
 [`docs/pitch/pitch-parte2.md`](../../../../docs/pitch/pitch-parte2.md), seções
-6.0–6.3. Os tipos em `contratos.ts` são interfaces de intenção: a saga, as
-transações locais, as filas e as compensações **ainda não estão implementadas**.
+6.0–6.3.
+
+## Implementação (Parte 4)
+
+- `orquestrador.ts`: máquina de estados persistida em `sagas` + linha do tempo em
+  `saga_historico`. Cada transição grava o próximo comando na **outbox** na mesma
+  transação; o relay publica. Respostas chegam pela fila `saga.mobilizacoes.respostas`
+  (consumo idempotente, `prefetch 1`).
+- Participantes: `comunidades-service/src/saga.ts` (T2/C2) e
+  `informacoes-service/src/saga.ts` (T3/C3), ambos idempotentes por `saga_id`.
+- Timeout por passo (`SAGA_TIMEOUT_MS`, 30 s) verificado a cada 1 s com
+  `FOR UPDATE SKIP LOCKED`. No timeout, o passo atual também é compensado.
+  Compensações sem confirmação são reenviadas; depois de `SAGA_MAX_TENTATIVAS`, a saga vai para `FALHOU`.
+- Acompanhamento: `GET /mobilizacoes/{id}/saga`.
+- Cenários verificados: caminho feliz, hemocentro sem capacidade (C2 → C1),
+  data ocupada / não admin (C1) e timeout com o informacoes-service fora (C3 → C2 → C1).
+  Roteiro: `scripts/demo-parte4.sh`.

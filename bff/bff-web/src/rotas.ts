@@ -1,5 +1,6 @@
 import type { FastifyInstance } from 'fastify';
-import { opcional, qs, svc, usuarioId } from './cliente.js';
+import { config } from './config.js';
+import { ErroServico, opcional, qs, svc, usuarioId } from './cliente.js';
 
 interface Comunidade {
   id: string;
@@ -29,6 +30,7 @@ export async function rotas(app: FastifyInstance): Promise<void> {
   });
   app.get('/info/conteudos', async (req) => svc.informacoes(`/conteudos${qs(req.query as Record<string, string>)}`));
   app.get('/info/hemocentros', async (req) => svc.informacoes(`/hemocentros${qs(req.query as Record<string, string>)}`));
+  app.get('/info/assistente/status', async () => svc.informacoes('/assistente/status'));
 
   // ---------- autenticadas ----------
   app.get('/painel', async (req) => {
@@ -64,10 +66,18 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(criada);
   });
 
+  // CQRS: o painel vem pronto do modelo de leitura do comunidades-service (1 chamada, sem N+1).
+  // Se a projeção ainda não existir para a comunidade, cai na composição antiga como reserva.
   app.get<{ Params: { id: string } }>('/comunidades/:id', async (req) => {
     usuarioId(req);
     const { id } = req.params;
-    const avisos: string[] = [];
+    try {
+      const painel = await svc.comunidades<Record<string, unknown>>(`/comunidades/${id}/painel`);
+      return { id: painel.comunidadeId, ...painel, fonte: 'modelo-de-leitura' };
+    } catch (erro) {
+      if (!(erro instanceof ErroServico && erro.status === 404)) throw erro;
+    }
+    const avisos: string[] = ['painel ainda não projetado; dados compostos na hora'];
     const [comunidade, membros, mobilizacoes] = await Promise.all([
       svc.comunidades(`/comunidades/${id}`),
       svc.comunidades<Membro[]>(`/comunidades/${id}/membros`),
@@ -80,7 +90,7 @@ export async function rotas(app: FastifyInstance): Promise<void> {
         return { ...m, nome: d?.nome ?? null };
       }),
     );
-    return { ...comunidade, membros: membrosComNome, mobilizacoes, avisos };
+    return { ...comunidade, membros: membrosComNome, mobilizacoes, avisos, fonte: 'composicao' };
   });
 
   app.post<{ Params: { id: string } }>('/comunidades/:id/membros', async (req, reply) => {
@@ -97,12 +107,27 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     if (membros.find((m) => m.doadorId === eu)?.papel !== 'admin') {
       return reply.code(403).send({ erro: 'apenas administradores da comunidade podem criar mobilizações' });
     }
-    const criada = await svc.mobilizacoes('/mobilizacoes', {
+    // Inicia a SAGA: a mobilização nasce PENDENTE e o resultado sai de forma assíncrona (202).
+    const criada = await svc.mobilizacoes<{ id: string }>('/mobilizacoes', {
       metodo: 'POST',
       usuario: eu,
       corpo: { cidade: comunidade.cidade, uf: comunidade.uf, ...req.body, comunidadeId: comunidade.id },
     });
-    return reply.code(201).send(criada);
+    return reply
+      .code(202)
+      .header('location', `/api/web/mobilizacoes/${criada.id}`)
+      .send({ ...criada, _links: { self: `/api/web/mobilizacoes/${criada.id}`, saga: `/api/web/mobilizacoes/${criada.id}/saga` } });
+  });
+
+  app.get<{ Params: { id: string } }>('/mobilizacoes/:id/saga', async (req) => {
+    usuarioId(req);
+    return svc.mobilizacoes(`/mobilizacoes/${req.params.id}/saga`);
+  });
+
+  // Assistente de dúvidas (RAG + LLM) do informacoes-service.
+  app.post('/assistente/perguntar', async (req) => {
+    usuarioId(req);
+    return svc.informacoes('/assistente/perguntar', { metodo: 'POST', corpo: req.body, timeoutMs: config.assistenteTimeoutMs });
   });
 
   app.get<{ Params: { id: string } }>('/mobilizacoes/:id', async (req) => {

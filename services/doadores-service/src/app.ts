@@ -52,10 +52,12 @@ export function criarApp({ obrigatorios = () => ({}), informativos = () => ({}) 
   return app;
 }
 
-export async function iniciar(app: FastifyInstance): Promise<void> {
+// aoEncerrar: para tarefas de fundo (relay da outbox, monitor da saga) antes de fechar o banco.
+export async function iniciar(app: FastifyInstance, aoEncerrar?: () => Promise<void>): Promise<void> {
   const encerrar = async () => {
     app.log.info('encerrando');
     await app.close();
+    await aoEncerrar?.().catch(() => {});
     await pool.end();
     process.exit(0);
   };

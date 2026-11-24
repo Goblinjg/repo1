@@ -1,0 +1,65 @@
+# LLM local (Ollama) usado pelo assistente do informacoes-service.
+# Os modelos ficam num PVC: o download (Job ollama-modelos) acontece uma vez só.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ollama-modelos
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/part-of: 4life }
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests: { storage: 4Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/component: llm, app.kubernetes.io/part-of: 4life }
+spec:
+  type: ClusterIP
+  selector: { app.kubernetes.io/name: ollama }
+  ports:
+    - { name: http, port: 11434, targetPort: http }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ollama
+  labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/component: llm, app.kubernetes.io/part-of: 4life }
+spec:
+  replicas: 1
+  # o PVC é ReadWriteOnce: o pod antigo precisa sair antes de o novo montar o volume
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: ollama }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: ollama, app.kubernetes.io/component: llm, app.kubernetes.io/part-of: 4life }
+    spec:
+      containers:
+        - name: ollama
+          image: ollama/ollama:0.40.18
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 11434 }
+          env:
+            - { name: OLLAMA_KEEP_ALIVE, value: 24h }   # mantém o modelo carregado entre perguntas
+          volumeMounts:
+            - { name: modelos, mountPath: /root/.ollama }
+          resources:
+            # inferência em CPU: com limite de 4 CPUs uma resposta levava ~8 s no kind
+            # (o dobro do compose) e estourava o orçamento de 12 s do assistente
+            requests: { cpu: "2", memory: 1Gi }
+            limits: { cpu: "8", memory: 4Gi }
+          readinessProbe:
+            httpGet: { path: /api/version, port: http }
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /api/version, port: http }
+            periodSeconds: 15
+            failureThreshold: 4
+          securityContext:
+            allowPrivilegeEscalation: false
+      volumes:
+        - name: modelos
+          persistentVolumeClaim: { claimName: ollama-modelos }

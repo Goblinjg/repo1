@@ -13,6 +13,6 @@ spec:
             matchExpressions:
               - key: app.kubernetes.io/name
                 operator: In
-                values: [comunidades-service, mobilizacoes-service]
+                values: [doadores-service, comunidades-service, mobilizacoes-service, informacoes-service]
       ports:
         - { port: amqp }

@@ -24,6 +24,7 @@ COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json ./
 COPY migrations ./migrations
+COPY conhecimento ./conhecimento
 # Usuário não-root que já existe na imagem oficial do Node (uid 1000).
 USER node
 EXPOSE 3004
