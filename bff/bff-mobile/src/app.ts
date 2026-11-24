@@ -1,4 +1,3 @@
-// @ts-expect-error Fastify is provided by the application's runtime dependencies.
 import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from 'fastify';
 import { config } from './config.js';
 import { ErroServico, ServicoIndisponivel } from './cliente.js';
