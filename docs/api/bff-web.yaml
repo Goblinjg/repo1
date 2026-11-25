@@ -82,8 +82,49 @@ paths:
       summary: Detalhe da mobilização + hemocentro (informacoes) + comunidade
       parameters: [ { $ref: '#/components/parameters/Id' } ]
       responses: { '200': { description: Detalhe enriquecido, content: { application/json: { schema: { $ref: '#/components/schemas/MobilizacaoDetalhe' } } } }, '404': { description: Não encontrada } }
+  /mobilizacoes:
+    get:
+      summary: Lista mobilizações confirmadas e informa o interesse do usuário autenticado
+      parameters:
+        - { name: cidade, in: query, schema: { type: string } }
+        - { name: comunidadeId, in: query, schema: { type: string, format: uuid } }
+        - { name: futuras, in: query, schema: { type: boolean, default: true } }
+        - { name: estado, in: query, schema: { type: string, enum: [PENDENTE, CONFIRMADA, CANCELADA, TODAS], default: CONFIRMADA } }
+      responses:
+        '200':
+          description: Lista de mobilizações
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: 'mobilizacoes-service.yaml#/components/schemas/Mobilizacao'
+                    - type: object
+                      properties:
+                        tenhoInteresse: { type: boolean }
+  /mobilizacoes/{id}/interesse:
+    post:
+      summary: Registra interesse do usuário autenticado
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '201': { description: Interesse registrado }, '422': { description: Mobilização indisponível ou sem vagas } }
+    delete:
+      summary: Remove interesse do usuário autenticado
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '204': { description: Interesse removido }, '404': { description: Interesse não encontrado } }
   /info/conteudos: { get: { summary: Conteúdos (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/ConteudoResumo' } } } } } } } }
   /info/hemocentros: { get: { summary: Hemocentros (público), responses: { '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } } } } } }
+  /info/conteudos/{slug}:
+    get:
+      summary: Conteúdo completo por slug (público)
+      parameters: [ { name: slug, in: path, required: true, schema: { type: string } } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/Conteudo' } } } }, '404': { description: Não encontrado } }
+  /info/faq: { get: { summary: Perguntas frequentes (público), responses: { '200': { description: OK } } } }
+  /info/hemocentros/{id}:
+    get:
+      summary: Detalhe de hemocentro (público)
+      parameters: [ { $ref: '#/components/parameters/Id' } ]
+      responses: { '200': { description: OK, content: { application/json: { schema: { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } } } }, '404': { description: Não encontrado } }
 components:
   parameters:
     Id: { name: id, in: path, required: true, schema: { type: string, format: uuid } }
@@ -134,4 +175,5 @@ components:
           properties:
             hemocentro: { allOf: [ { $ref: 'informacoes-service.yaml#/components/schemas/Hemocentro' } ], nullable: true }
             comunidade: { allOf: [ { $ref: 'comunidades-service.yaml#/components/schemas/Comunidade' } ], nullable: true }
+            tenhoInteresse: { type: boolean }
             avisos: { type: array, items: { type: string } }

@@ -215,3 +215,14 @@ pgvector) tratado como dependência falível (circuit breaker, timeout/retry, ca
 
 Ainda planejados (fora do escopo da Parte 4): versionamento `/api/v1` na borda, HATEOAS completo e
 rate limiting no gateway.
+
+## Aplicação web
+
+O frontend está em `frontend/` e usa o gateway para login e para as rotas `/api/web/**`. No Docker
+Compose, o Nginx serve a aplicação e encaminha as chamadas ao gateway na mesma origem do navegador.
+Depois de configurar o `.env`, execute `docker compose up -d --build` e acesse
+`http://localhost:3000` (ou a porta definida em `FRONTEND_PORT`).
+
+O frontend inclui cadastro e login, painel do doador, mobilizações e interesses, comunidades,
+administração e acompanhamento da SAGA, conteúdos, hemocentros e assistente. As rotas web de
+mobilizações e os detalhes de informações estão descritos em `docs/api/bff-web.yaml`.

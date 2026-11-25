@@ -17,6 +17,10 @@ interface Mobilizacao {
   id: string;
   comunidadeId: string;
   hemocentroId: string | null;
+  titulo: string;
+  dataHora: string;
+  cidade: string;
+  estado?: string;
 }
 
 export async function rotas(app: FastifyInstance): Promise<void> {
@@ -29,7 +33,14 @@ export async function rotas(app: FastifyInstance): Promise<void> {
     return reply.code(201).send(criado);
   });
   app.get('/info/conteudos', async (req) => svc.informacoes(`/conteudos${qs(req.query as Record<string, string>)}`));
+  app.get<{ Params: { slug: string } }>('/info/conteudos/:slug', async (req) =>
+    svc.informacoes(`/conteudos/${encodeURIComponent(req.params.slug)}`),
+  );
+  app.get('/info/faq', async (req) => svc.informacoes(`/faq${qs(req.query as Record<string, string>)}`));
   app.get('/info/hemocentros', async (req) => svc.informacoes(`/hemocentros${qs(req.query as Record<string, string>)}`));
+  app.get<{ Params: { id: string } }>('/info/hemocentros/:id', async (req) =>
+    svc.informacoes(`/hemocentros/${req.params.id}`),
+  );
   app.get('/info/assistente/status', async () => svc.informacoes('/assistente/status'));
 
   // ---------- autenticadas ----------
@@ -59,6 +70,17 @@ export async function rotas(app: FastifyInstance): Promise<void> {
   app.get<{ Querystring: { cidade?: string; uf?: string } }>('/comunidades', async (req) => {
     usuarioId(req);
     return svc.comunidades(`/comunidades${qs({ cidade: req.query.cidade, uf: req.query.uf })}`);
+  });
+
+  app.get<{ Querystring: { cidade?: string; comunidadeId?: string; futuras?: boolean; estado?: 'PENDENTE' | 'CONFIRMADA' | 'CANCELADA' | 'TODAS' } }>('/mobilizacoes', async (req) => {
+    const eu = usuarioId(req);
+    const filtros = { cidade: req.query.cidade, comunidadeId: req.query.comunidadeId, futuras: req.query.futuras ?? true, estado: req.query.estado };
+    const [lista, minhas] = await Promise.all([
+      svc.mobilizacoes<Mobilizacao[]>(`/mobilizacoes${qs(filtros)}`),
+      svc.mobilizacoes<Mobilizacao[]>(`/mobilizacoes${qs({ interessado: eu, futuras: true })}`),
+    ]);
+    const idsComInteresse = new Set(minhas.map((m) => m.id));
+    return lista.map((m) => ({ ...m, tenhoInteresse: idsComInteresse.has(m.id) }));
   });
 
   app.post('/comunidades', async (req, reply) => {
@@ -119,6 +141,19 @@ export async function rotas(app: FastifyInstance): Promise<void> {
       .send({ ...criada, _links: { self: `/api/web/mobilizacoes/${criada.id}`, saga: `/api/web/mobilizacoes/${criada.id}/saga` } });
   });
 
+  app.post<{ Params: { id: string } }>('/mobilizacoes/:id/interesse', async (req, reply) => {
+    const r = await svc.mobilizacoes(`/mobilizacoes/${req.params.id}/interesses`, {
+      metodo: 'POST',
+      corpo: { doadorId: usuarioId(req) },
+    });
+    return reply.code(201).send(r);
+  });
+
+  app.delete<{ Params: { id: string } }>('/mobilizacoes/:id/interesse', async (req, reply) => {
+    await svc.mobilizacoes(`/mobilizacoes/${req.params.id}/interesses/${usuarioId(req)}`, { metodo: 'DELETE' });
+    return reply.code(204).send();
+  });
+
   app.get<{ Params: { id: string } }>('/mobilizacoes/:id/saga', async (req) => {
     usuarioId(req);
     return svc.mobilizacoes(`/mobilizacoes/${req.params.id}/saga`);
@@ -131,13 +166,14 @@ export async function rotas(app: FastifyInstance): Promise<void> {
   });
 
   app.get<{ Params: { id: string } }>('/mobilizacoes/:id', async (req) => {
-    usuarioId(req);
+    const eu = usuarioId(req);
     const mob = await svc.mobilizacoes<Mobilizacao>(`/mobilizacoes/${req.params.id}`);
     const avisos: string[] = [];
-    const [hemocentro, comunidade] = await Promise.all([
+    const [hemocentro, comunidade, interesses] = await Promise.all([
       mob.hemocentroId ? opcional(svc.informacoes(`/hemocentros/${mob.hemocentroId}`), avisos, 'hemocentro') : null,
       opcional(svc.comunidades(`/comunidades/${mob.comunidadeId}`), avisos, 'comunidade'),
+      opcional(svc.mobilizacoes<Mobilizacao[]>(`/mobilizacoes${qs({ interessado: eu, futuras: true })}`), avisos, 'interesses'),
     ]);
-    return { ...mob, hemocentro, comunidade, avisos };
+    return { ...mob, hemocentro, comunidade, tenhoInteresse: interesses?.some((m) => m.id === mob.id) ?? false, avisos };
   });
 }

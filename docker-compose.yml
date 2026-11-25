@@ -235,6 +235,17 @@ services:
       bff-mobile: { condition: service_healthy }
       bff-web: { condition: service_healthy }
 
+  # Interface web estática. O Nginx encaminha /api e /auth ao gateway,
+  # mantendo o navegador na mesma origem e evitando configuração de CORS.
+  frontend:
+    build: ./frontend
+    image: 4life/frontend:1.0.0
+    restart: unless-stopped
+    ports: ["${FRONTEND_PORT:-3000}:80"]
+    networks: [edge]
+    depends_on:
+      gateway: { condition: service_healthy }
+
 networks:
   edge: {}
   app: { internal: true }
